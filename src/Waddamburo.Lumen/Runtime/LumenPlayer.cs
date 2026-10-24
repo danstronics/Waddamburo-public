@@ -179,6 +179,19 @@ public sealed class LumenPlayer
     /// </summary>
     public static bool Inspect { get; set; }
 
+    /// <summary>Editor picking: snapshot quads carry <see cref="LumenQuadOrigin"/> (instance path and shape). Off by default.</summary>
+    public bool RecordOrigins { get; set; }
+
+    private LumenQuadOrigin? origin(DisplayInstance instance, int geometry, uint texture, LumenQuadOriginKind kind)
+    {
+        if (!RecordOrigins) return null;
+        var path = new List<LumenInstanceRef>();
+        for (var node = instance; node is not null; node = node.Parent)
+            path.Add(new LumenInstanceRef(node.CharacterId, node.Name, node.Depth, node.PlacementId, node.Frame));
+        path.Reverse();
+        return new LumenQuadOrigin([.. path], instance.CharacterId, geometry, texture, kind);
+    }
+
     /// <summary>The movie this player runs (for <see cref="Inspect"/>).</summary>
     public string? Name { get; set; }
 
@@ -2745,8 +2758,9 @@ public sealed class LumenPlayer
             appendText(instance, textField, transform, color, blend, maskDepth, quads);
         if (_shapes.TryGetValue(instance.CharacterId, out var shape))
         {
-            foreach (var geometry in shape.Geometry)
+            for (var geometryIndex = 0; geometryIndex < shape.Geometry.Length; geometryIndex++)
             {
+                var geometry = shape.Geometry[geometryIndex];
                 if (geometry.Vertices.Length != 4)
                 {
                     reportOnce("LUM_NON_QUAD_GEOMETRY", instance.CharacterId, instance.Frame, "Only four-vertex shape geometry is renderable.");
@@ -2778,10 +2792,17 @@ public sealed class LumenPlayer
                             color.Add,
                             blend,
                             NativeSurface: nativeFill.Surface, MaskDepth: maskDepth,
-                            Source: Inspect ? describe(instance, $"native fill '{slot}'") : null));
+                            Source: Inspect ? describe(instance, $"native fill '{slot}'") : null,
+                            Origin: origin(instance, geometryIndex, 0, LumenQuadOriginKind.NativeSurface)));
                         continue;
                     }
                     reportOnce("LUM_NATIVE_FILL_DEFERRED", instance.CharacterId, instance.Frame, $"Fill-zero/native shape '{slot}' has no host surface yet.");
+                    if (RecordOrigins)
+                        quads.Add(new LumenRenderQuad(0,
+                            transformVertex(geometry.Vertices[0], transform), transformVertex(geometry.Vertices[1], transform),
+                            transformVertex(geometry.Vertices[2], transform), transformVertex(geometry.Vertices[3], transform),
+                            LumenRenderColor.Transparent, LumenRenderColor.Transparent, blend, MaskDepth: maskDepth,
+                            Origin: origin(instance, geometryIndex, 0, LumenQuadOriginKind.NativeSurface)));
                     continue;
                 }
 
@@ -2795,7 +2816,8 @@ public sealed class LumenPlayer
                     color.Add,
                     blend, MaskDepth: maskDepth,
                     UseNearestSampling: instance.UseNearestSampling,
-                    Source: Inspect ? describe(instance, $"texture {geometry.TextureIndex}") : null));
+                    Source: Inspect ? describe(instance, $"texture {geometry.TextureIndex}") : null,
+                    Origin: origin(instance, geometryIndex, geometry.TextureIndex, LumenQuadOriginKind.Texture)));
             }
         }
 
@@ -3036,10 +3058,22 @@ public sealed class LumenPlayer
     private void appendText(DisplayInstance instance, LmbTextDefinition field, LumenMatrix transform, ColorState color,
         LumenRenderBlend blend, byte maskDepth, ImmutableArray<LumenRenderQuad>.Builder quads)
     {
-        if (!instance.Variables.TryGetValue("text", out var value) || toAvmString(value) is not { Length: > 0 } text
-            || field.BoundsIndex >= _movie.Bounds.Length)
+        if (field.BoundsIndex >= _movie.Bounds.Length)
             return;
         var box = _movie.Bounds[(int)field.BoundsIndex];
+        if (!instance.Variables.TryGetValue("text", out var value) || toAvmString(value) is not { Length: > 0 } text)
+        {
+            // Editors still need to pick an empty field: an invisible, untextured quad over its box.
+            if (RecordOrigins)
+            {
+                var p0 = transform.Transform(box.Left, box.Top); var p1 = transform.Transform(box.Right, box.Top);
+                var p2 = transform.Transform(box.Right, box.Bottom); var p3 = transform.Transform(box.Left, box.Bottom);
+                quads.Add(new LumenRenderQuad(0, new(p0.X, p0.Y, 0, 0), new(p1.X, p1.Y, 1, 0), new(p2.X, p2.Y, 1, 1), new(p3.X, p3.Y, 0, 1),
+                    LumenRenderColor.Transparent, LumenRenderColor.Transparent, blend, MaskDepth: maskDepth,
+                    Origin: origin(instance, -1, 0, LumenQuadOriginKind.Text)));
+            }
+            return;
+        }
         var html = field.HtmlStringIndex < _movie.Strings.Length ? _movie.Strings[(int)field.HtmlStringIndex].Value : "";
         var key = LumenTextSurface.Key(text, box.Right - box.Left, box.Bottom - box.Top, field.FontSize,
             LumenTextSurface.Align(html), LumenTextSurface.Colour(html));
@@ -3050,7 +3084,8 @@ public sealed class LumenPlayer
         }
         quads.Add(new LumenRenderQuad(0, corner(box.Left, box.Top, 0, 0), corner(box.Right, box.Top, 1, 0),
             corner(box.Right, box.Bottom, 1, 1), corner(box.Left, box.Bottom, 0, 1), color.Multiply, color.Add, blend,
-            NativeSurface: key, MaskDepth: maskDepth));
+            NativeSurface: key, MaskDepth: maskDepth,
+            Origin: origin(instance, -1, 0, LumenQuadOriginKind.Text)));
     }
 
     // Kept out of appendInstance: a lambda there captures its transform, a closure on every call.

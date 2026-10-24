@@ -60,7 +60,29 @@ public readonly record struct LumenRenderQuad(
     LumenRenderMaskOperation MaskOperation = LumenRenderMaskOperation.Draw,
     byte MaskDepth = 0,
     string? Source = null,
-    float FrameBorderScale = 1);
+    float FrameBorderScale = 1,
+    LumenQuadOrigin? Origin = null);
+
+/// <summary>One display-list level that produced a quad: the instance's character, name, depth and frame.</summary>
+public readonly record struct LumenInstanceRef(uint CharacterId, string Name, long Depth, uint PlacementId, int Frame);
+
+/// <summary>
+/// Editor picking data (recorded only when <c>LumenPlayer.RecordOrigins</c> is set): the instance path
+/// from the root timeline to the drawing instance, and the shape geometry or text field drawn.
+/// </summary>
+public sealed record LumenQuadOrigin(
+    System.Collections.Immutable.ImmutableArray<LumenInstanceRef> Path,
+    uint CharacterId,
+    int GeometryIndex,
+    uint TextureIndex,
+    LumenQuadOriginKind Kind);
+
+public enum LumenQuadOriginKind
+{
+    Texture,
+    NativeSurface,
+    Text,
+}
 
 /// <summary>
 /// Immutable renderer-independent output from one Lumen player state. Coordinates
