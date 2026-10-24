@@ -141,6 +141,7 @@ internal sealed class MainWindow : Form
                     shot.Save(path[19..]);
                 }
             }
+            if (args.Contains("--build-preview") && _studio is not null) log("Preview root: " + WaddamburoLauncher.BuildPreviewRoot(_studio.Project));
             if (args.Contains("--save")) saveAll();
             if (args.FirstOrDefault(a => a.StartsWith("--tab=", StringComparison.Ordinal)) is { } tab)
                 _inspector.SelectedIndex = Math.Clamp(int.Parse(tab[6..], CultureInfo.InvariantCulture), 0, _inspector.TabCount - 1);
@@ -381,7 +382,9 @@ internal sealed class MainWindow : Form
         _studio = StudioSession.Open(project);
         _studio.Changed += onStudioChanged;
         _settings.AddRecent(project.Path);
+        var explorerClock = Stopwatch.StartNew();
         _explorer.SetSession(_studio);
+        log($"Archive list ready in {explorerClock.Elapsed.TotalSeconds:0.0}s.");
         log($"Opened {project.Path}\r\n  original: {project.BasePacked}\r\n  output:   {project.OutputPacked}");
         foreach (var layer in project.Linked) log($"  linked layer '{layer.Name}': {layer.SourcePacked} → {layer.OutputPacked}{(layer.ProtectMovies ? " (textures only)" : "")}");
         updateTitle();
@@ -405,13 +408,17 @@ internal sealed class MainWindow : Form
         using var progress = new ProgressForm("Scanning textures for clones…");
         progress.Show(this);
         var clock = Stopwatch.StartNew();
-        var task = Task.Run(() => studio.BuildIndex(new Progress<IndexProgress>(p => progress.Report(p.Done, p.Total, p.Current))));
+        // Created on the UI thread, so reports are posted to it instead of blocking the scanning threads.
+        var reporter = new Progress<IndexProgress>(p => progress.Report(p.Done, p.Total, p.Current));
+        var task = Task.Run(() => studio.BuildIndex(reporter));
         while (!task.IsCompleted) { Application.DoEvents(); Thread.Sleep(15); }
         progress.Close();
         task.GetAwaiter().GetResult();
         var index = studio.RequireIndex();
         var families = index.Families.ToArray();
+        var planClock = Stopwatch.StartNew();
         var disagreeing = studio.PlanSync().Count;
+        log($"(scan {clock.Elapsed.TotalSeconds:0.0}s: {TextureIndex.LastTimings}; sync plan {planClock.Elapsed.TotalSeconds:0.0}s)");
         log($"Clone index: {index.Entries.Count} textures, {families.Length} clone families ({families.Sum(f => f.Count)} textures), " +
             $"{index.Entries.Count(e => e.SignificantlyModified)} edited, {disagreeing} clone(s) behind a newer edit · {clock.Elapsed.TotalSeconds:0.0}s");
         foreach (var (archive, error) in index.Errors) log($"  could not scan {archive}: {error}");
@@ -1013,6 +1020,7 @@ internal sealed class MainWindow : Form
 
     private void captureWindow(string path)
     {
+        File.WriteAllText(Path.ChangeExtension(path, ".log"), _log.Text);
         using var shot = new Bitmap(Width, Height);
         DrawToBitmap(shot, new Rectangle(0, 0, Width, Height));
         using (var stage = _stage.CaptureImage())
@@ -1076,6 +1084,7 @@ internal sealed class ProgressForm : Form
     public void Report(int done, int total, string current)
     {
         if (IsDisposed) return;
+        if (InvokeRequired) { BeginInvoke(() => Report(done, total, current)); return; }
         _bar.Maximum = Math.Max(1, total); _bar.Value = Math.Clamp(done, 0, _bar.Maximum);
         _label.Text = $"{done}/{total} · {current}";
     }

@@ -107,7 +107,7 @@ try
             throw new ArgumentException($"Unknown command '{positional[0]}'.");
     }
 }
-catch (Exception exception) when (exception is ArgumentException or IOException or InvalidDataException or InvalidOperationException or KeyNotFoundException or IndexOutOfRangeException)
+catch (Exception exception) when (exception is ArgumentException or IOException or InvalidDataException or InvalidOperationException or KeyNotFoundException or IndexOutOfRangeException or System.Text.Json.JsonException)
 {
     Console.Error.WriteLine("error: " + exception.Message);
     return 2;

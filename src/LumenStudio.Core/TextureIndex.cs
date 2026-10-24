@@ -54,13 +54,18 @@ public sealed class TextureIndex
         _cachePath = cachePath;
     }
 
+    /// <summary>Phase durations of the last <see cref="Build"/> (diagnostics).</summary>
+    public static string LastTimings { get; private set; } = "";
+
     public IReadOnlyCollection<TextureEntry> Entries => _entries.Values;
 
     public static TextureIndex Build(ArchiveStore store, IProgress<IndexProgress>? progress = null, CancellationToken cancellation = default)
     {
         var cachePath = store.Project.Path.Length == 0 ? null : Path.Combine(store.Project.DataDirectory, "texture-index.json");
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         var index = new TextureIndex(store, cachePath);
         var cached = index.loadCache();
+        var cacheTime = clock.Elapsed.TotalSeconds;
         var archives = store.Archives().ToArray();
         var done = 0;
         var payloadMemo = new ConcurrentDictionary<string, (string Hash, bool Uniform)>(StringComparer.Ordinal);
@@ -83,8 +88,11 @@ public sealed class TextureIndex
             index._scans[archive] = scan;
             progress?.Report(new IndexProgress(Interlocked.Increment(ref done), archives.Length, archive.ToString()));
         });
+        var scanTime = clock.Elapsed.TotalSeconds;
         index.rebuildFamilies();
+        var familyTime = clock.Elapsed.TotalSeconds;
         index.saveCache();
+        LastTimings = $"cache {cacheTime:0.0}s, archives {scanTime - cacheTime:0.0}s, families {familyTime - scanTime:0.0}s, save {clock.Elapsed.TotalSeconds - familyTime:0.0}s";
         return index;
     }
 

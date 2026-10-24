@@ -57,15 +57,9 @@ internal static partial class WaddamburoLauncher
         var root = Path.Combine(project.DataDirectory, "preview-usrdir");
         var previewData = Path.Combine(root, "data");
         if (Directory.Exists(previewData)) deleteLinksSafely(previewData, project.DataDirectory);
-        Directory.CreateDirectory(previewData);
-        foreach (var entry in Directory.EnumerateFileSystemEntries(data))
-        {
-            var name = Path.GetFileName(entry);
-            var target = Path.Combine(previewData, name);
-            if (name.Equals("lumendata", StringComparison.OrdinalIgnoreCase) && Directory.Exists(entry)) mirror(entry, target, Path.GetDirectoryName(project.OutputPacked)!);
-            else if (Directory.Exists(entry)) junction(target, entry);
-            else link(target, entry);
-        }
+        // The overlay's data folder (output packed → lumendata → data) mirrors over the original data folder.
+        var outputData = Directory.GetParent(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(project.OutputPacked))!)!.FullName;
+        mirror(data, previewData, outputData);
         return root;
     }
 
@@ -83,7 +77,9 @@ internal static partial class WaddamburoLauncher
         {
             var name = Path.GetFileName(file);
             var modified = Path.Combine(overlay, name);
-            link(Path.Combine(target, name), File.Exists(modified) ? modified : file);
+            // Overlay files are ours: hard-link them. Original files are copied (only small ones live here).
+            if (File.Exists(modified)) link(Path.Combine(target, name), modified);
+            else File.Copy(file, Path.Combine(target, name), overwrite: true);
         }
     }
 
@@ -96,7 +92,7 @@ internal static partial class WaddamburoLauncher
             throw new IOException($"Could not create a junction {link} → {target}: {process.StandardError.ReadToEnd().Trim()}");
     }
 
-    /// <summary>A hard link when on the same volume (no copy, instant), otherwise a copy.</summary>
+    /// <summary>A hard link to an overlay file when on the same volume (no copy, instant), otherwise a copy.</summary>
     private static void link(string link, string target)
     {
         if (CreateHardLink(link, target, 0)) return;

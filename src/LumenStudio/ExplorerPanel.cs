@@ -86,16 +86,22 @@ internal sealed class ExplorerPanel : UserControl
     public void RefreshMarkers()
     {
         if (_studio is null) return;
-        foreach (var (id, node) in _archiveNodes) decorate(node, id);
+        var pending = _studio.Pending.Archives.ToHashSet();
+        _tree.BeginUpdate();
+        try { foreach (var (id, node) in _archiveNodes) decorate(node, id, pending); }
+        finally { _tree.EndUpdate(); }
     }
 
-    private void decorate(TreeNode node, ArchiveId id)
+    private void decorate(TreeNode node, ArchiveId id, HashSet<ArchiveId>? pendingArchives = null)
     {
-        var pending = _studio!.Pending.Archives.Contains(id);
+        var pending = pendingArchives?.Contains(id) ?? _studio!.Pending.Archives.Contains(id);
         var modified = _studio.Store.IsModified(id);
         var name = node.Text.TrimStart('✱', '●', ' ');
-        node.Text = (pending ? "✱ " : modified ? "● " : "") + name;
-        node.ForeColor = pending ? Theme.Pending : modified ? Theme.Modified : Theme.Foreground;
+        var text = (pending ? "✱ " : modified ? "● " : "") + name;
+        var color = pending ? Theme.Pending : modified ? Theme.Modified : Theme.Foreground;
+        // Touch only changed nodes: every TreeView item update relays out the whole (large) tree.
+        if (node.Text != text) node.Text = text;
+        if (node.ForeColor != color) node.ForeColor = color;
         node.ToolTipText = pending ? "Unsaved edits" : modified ? "Modified (in the overlay output)" : "Original";
     }
 
