@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Desktop tooling, not part of the AOT-compatible game. -->
+    <IsAotCompatible>false</IsAotCompatible>
+    <RootNamespace>LumenStudio.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="LumenStudio.Tests" />
+    <ProjectReference Include="../Waddamburo.Formats/Waddamburo.Formats.csproj" />
+    <ProjectReference Include="../Waddamburo.Upscale/Waddamburo.Upscale.csproj" />
+  </ItemGroup>
+</Project>
