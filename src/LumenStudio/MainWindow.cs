@@ -128,6 +128,19 @@ internal sealed class MainWindow : Form
             }
             if (args.FirstOrDefault(a => a.StartsWith("--edit-text=", StringComparison.Ordinal)) is { } editText && _movie is not null)
                 demoTextureEdit(editText[12..], args.FirstOrDefault(a => a.StartsWith("--editor-capture=", StringComparison.Ordinal))?[17..]);
+            if (args.FirstOrDefault(a => a.StartsWith("--open-textures=", StringComparison.Ordinal)) is { } textures && _studio is not null)
+            {
+                var spec = textures[16..]; var colon = spec.IndexOf(':');
+                var form = new TextureArchiveForm(_studio, new ArchiveId(spec[..colon], spec[(colon + 1)..]), log);
+                form.Show(this);
+                Application.DoEvents();
+                if (args.FirstOrDefault(a => a.StartsWith("--textures-capture=", StringComparison.Ordinal)) is { } path)
+                {
+                    using var shot = new Bitmap(form.Width, form.Height);
+                    form.DrawToBitmap(shot, new Rectangle(0, 0, form.Width, form.Height));
+                    shot.Save(path[19..]);
+                }
+            }
             if (args.Contains("--save")) saveAll();
             if (args.FirstOrDefault(a => a.StartsWith("--tab=", StringComparison.Ordinal)) is { } tab)
                 _inspector.SelectedIndex = Math.Clamp(int.Parse(tab[6..], CultureInfo.InvariantCulture), 0, _inspector.TabCount - 1);

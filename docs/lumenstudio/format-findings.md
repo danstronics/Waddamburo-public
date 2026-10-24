@@ -37,3 +37,20 @@ Japanese data (19,850 textures) with `tools/Probe`. These are the facts the writ
 - `F007` holds one entry per texture: `textureIndex, nameIndex(0), width:float, height:float`.
   It is the only record with texture dimensions and is updated on resize.
 - `F00C` words 8/9 are the stage size (1280×720), word 7 the frame rate.
+
+## NUT_PACK_TYPE1 (`nutdatapack.ndp`)
+
+- Same preamble as a DDP; entry count at `0x3E`, then 9 bytes, then entries
+  `nameLength, name, [5 bytes after the first entry], relativeOffset, length`, then one word with the
+  data-block length, then the NUTs (contiguous). 348/348 archives round-trip byte-identically.
+- There is no largest-entry word, so resized NDP textures are reported as a warning to test on hardware.
+- 11,306 entries are single v1 textures, 89 hold several textures; LumenStudio indexes them flat.
+
+## Standalone NUT files (`data/nutdata`, `data/don3d`, …)
+
+- 1,794 files: v1 single (168), v1 multi (775), v2 multi (726), v2 single (123). v2 stores the header
+  table first and payloads after it, each header's `+0x20` being the payload offset relative to that
+  header. Extracting any texture and splicing it back is byte-identical for all of them.
+- The two font atlases (`data/font/*.nut`) use format 1 = BC2/DXT3 (explicit 4-bit alpha); supported.
+- Clone families span layers: e.g. battle backgrounds in `nutdata/S10100-1/battle/bg` are identical to
+  textures in `battle/chat`, `battle/enso_stage` and `battle/intro` DDPs.
