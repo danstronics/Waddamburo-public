@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
-using Waddamburo.Formats.Ddp;
 using Waddamburo.Formats.Nut;
 
 namespace LumenStudio.Core;
@@ -39,7 +38,7 @@ public sealed record TextureEntry(
 /// </summary>
 public sealed class TextureIndex
 {
-    private const int CacheVersion = 4;
+    private const int CacheVersion = 5;
     private readonly ArchiveStore _store;
     private readonly string? _cachePath;
     private readonly ConcurrentDictionary<ArchiveId, ArchiveScan> _scans = new();
@@ -129,38 +128,37 @@ public sealed class TextureIndex
     {
         var source = _store.ReadSource(archive);
         var current = _store.IsModified(archive) ? _store.ReadCurrent(archive) : source;
-        var sourceArchive = DdpArchive.Open(source);
-        var currentArchive = ReferenceEquals(source, current) ? sourceArchive : DdpArchive.Open(current);
-        var packList = _store.PackList(archive);
+        var kind = ArchiveStore.Kind(archive);
+        var packList = kind == ArchiveKind.Ddp ? _store.PackList(archive) : null;
+        var slots = TextureContainers.Slots(source, kind, Path.GetFileName(archive.Path), packList);
+        var sourceTextures = TextureContainers.Textures(source, kind);
+        var currentTextures = ReferenceEquals(source, current) ? sourceTextures : TextureContainers.Textures(current, kind);
         var result = new ArchiveScan { SourceStamp = sourceStamp, CurrentStamp = currentStamp };
-        foreach (var movie in sourceArchive.Index.Movies)
+        foreach (var slot in slots)
         {
-            for (var global = movie.TextureBegin; global < movie.TextureEnd; global++)
             {
-                var original = describe(source, sourceArchive.Index.Textures[global], memo);
-                var now = ReferenceEquals(source, current) || global >= currentArchive.Index.Textures.Length
-                    ? original : describe(current, currentArchive.Index.Textures[global], memo);
+                var global = slot.Index;
+                var original = describe(sourceTextures[global], memo);
+                var now = ReferenceEquals(source, current) || global >= currentTextures.Count ? original : describe(currentTextures[global], memo);
                 result.Textures.Add(new TextureScan
                 {
-                    Index = global, Movie = movie.Name, Local = global - movie.TextureBegin,
-                    Name = packList?.TextureName(movie.Name, global - movie.TextureBegin),
+                    Index = global, Movie = slot.Group, Local = slot.Local,
+                    Name = slot.Name,
                     Width = original.Width, Height = original.Height, Format = (byte)original.Format, SourceHash = original.Hash,
                     CurrentHash = now.Hash, CurrentWidth = now.Width, CurrentHeight = now.Height, CurrentFormat = (byte)now.Format,
                     Uniform = original.Uniform,
                     ChangedPixels = original.Hash == now.Hash ? 0
                         : original.Width != now.Width || original.Height != now.Height ? -1
-                        : ChangedPixelCount(decode(source, sourceArchive.Index.Textures[global]), decode(current, currentArchive.Index.Textures[global])),
+                        : ChangedPixelCount(NutTextureDecoder.DecodeRgba8(sourceTextures[global]), NutTextureDecoder.DecodeRgba8(currentTextures[global])),
                 });
             }
         }
         return result;
     }
 
-    private static (string Hash, int Width, int Height, NutPixelFormat Format, bool Uniform) describe(byte[] archive, DdpTextureEntry entry,
+    private static (string Hash, int Width, int Height, NutPixelFormat Format, bool Uniform) describe(NutTexture texture,
         ConcurrentDictionary<string, (string Hash, bool Uniform)> memo)
     {
-        var nut = NutFile.Parse(archive.AsMemory(checked((int)entry.Offset), checked((int)entry.Length)));
-        var texture = nut.Textures[0];
         // Identical payloads decode identically: hash the payload first and decode each distinct one once.
         var payloadKey = $"{(byte)texture.Format}:{texture.Width}x{texture.Height}:" + Convert.ToHexString(SHA256.HashData(texture.Data.Span));
         var (hash, uniform) = memo.GetOrAdd(payloadKey, _ =>
@@ -170,9 +168,6 @@ public sealed class TextureIndex
         });
         return (hash, texture.Width, texture.Height, texture.Format, uniform);
     }
-
-    private static byte[] decode(byte[] archive, DdpTextureEntry entry) =>
-        NutTextureDecoder.DecodeRgba8(NutFile.Parse(archive.AsMemory(checked((int)entry.Offset), checked((int)entry.Length))).Textures[0]);
 
     /// <summary>
     /// Texels whose visible (premultiplied) colour or alpha differs by more than <see cref="VisibleDifference"/>:

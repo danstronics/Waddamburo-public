@@ -295,6 +295,7 @@ internal sealed class MainWindow : Form
     private void wireEvents()
     {
         _explorer.MovieOpened += (archive, movie) => Ui.Guard(this, () => openMovie(archive, movie));
+        _explorer.TextureArchiveOpened += archive => Ui.Guard(this, () => new TextureArchiveForm(requireStudio(), archive, log).Show(this));
         _explorer.RevertRequested += archive => Ui.Guard(this, () => revertArchive(archive));
         _clock.Tick += (_, _) => Ui.Guard(this, tick);
         _scriptsButton.CheckedChanged += (_, _) => Ui.Guard(this, () => { _movie?.SetRunScripts(_scriptsButton.Checked); refreshFrame(); });
@@ -875,30 +876,16 @@ internal sealed class MainWindow : Form
     private TextureId requireTexture() =>
         _textures.SelectedTexture ?? throw new InvalidOperationException("Select an element that draws a texture (or pick one in the Texture tab).");
 
-    private string textureName(TextureId id) => _studio?.Index?.Get(id)?.Name ?? $"{id.Archive.Path} #{id.Index}";
+    private string textureName(TextureId id) => TextureCommands.Name(requireStudio(), id);
 
     private void editTexture()
     {
-        var studio = requireStudio();
         var id = requireTexture();
         pause();
-        var image = studio.TextureImage(id);
-        var targets = studio.PropagationTargets(id, Propagation.Clones);
-        var allClones = studio.Index is null ? 0 : studio.Index.Family(id).Count - 1;
-        var note = allClones > targets.Count ? $" ({allClones - targets.Count} unlinked or blank)" : "";
-        using var editor = new TextureEditorForm(image, textureName(id), targets.Count, note);
-        if (editor.ShowDialog(this) != DialogResult.OK) return;
-        applyTexture(id, editor.Result, editor.Propagate);
+        TextureCommands.Edit(this, requireStudio(), id, log);
     }
 
-    private void applyTexture(TextureId id, RgbaImage image, bool propagate)
-    {
-        var studio = requireStudio();
-        var changed = studio.ReplaceTexture(id, image, propagate ? Propagation.Clones : Propagation.None);
-        var original = studio.Index?.Get(id);
-        log($"Texture {textureName(id)} → {image.Width}×{image.Height}{(original is not null && (original.Width != image.Width || original.Height != image.Height) ? $" (was {original.Width}×{original.Height})" : "")}" +
-            (changed.Count > 1 ? $", also {changed.Count - 1} clone(s) in {changed.Skip(1).Select(c => c.Archive).Distinct().Count()} archive(s)" : "") + ". Save all to write it.");
-    }
+    private void applyTexture(TextureId id, RgbaImage image, bool propagate) => TextureCommands.Apply(requireStudio(), id, image, propagate, log);
 
     /// <summary>Test hook: edits the selected texture with a text layer and applies it with clone propagation.</summary>
     private void demoTextureEdit(string text, string? capture)
@@ -908,7 +895,6 @@ internal sealed class MainWindow : Form
         var image = studio.TextureImage(id);
         using var editor = new TextureEditorForm(image, textureName(id), studio.PropagationTargets(id, Propagation.Clones).Count);
         editor.Show(this);
-        editor.TextLayer?.GetType();
         editor.PlaceText(text, image.Width / 2f, image.Height / 2f);
         Application.DoEvents();
         if (capture is not null)
@@ -924,81 +910,21 @@ internal sealed class MainWindow : Form
         applyTexture(id, result, propagate: true);
     }
 
-    private void replaceTexture()
-    {
-        var studio = requireStudio();
-        var id = requireTexture();
-        using var dialog = new OpenFileDialog { Filter = "Images|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tga;*.tif;*.tiff|All files|*.*" };
-        if (dialog.ShowDialog(this) != DialogResult.OK) return;
-        var image = Imaging.Load(dialog.FileName);
-        var current = studio.TextureImage(id);
-        var propagate = true;
-        var targets = studio.PropagationTargets(id, Propagation.Clones).Count;
-        if (targets > 0)
-        {
-            var answer = MessageBox.Show(this, $"Also replace {targets} linked clone(s) of this texture?", "Replace texture", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
-            if (answer == DialogResult.Cancel) return;
-            propagate = answer == DialogResult.Yes;
-        }
-        if (image.Width != current.Width || image.Height != current.Height)
-            log($"Note: the image is {image.Width}×{image.Height}, the texture {current.Width}×{current.Height}. The texture is resized; it keeps its on-screen size.");
-        applyTexture(id, image, propagate);
-    }
+    private void replaceTexture() => TextureCommands.Replace(this, requireStudio(), requireTexture(), log);
 
-    private void exportTexture()
-    {
-        var studio = requireStudio();
-        var id = requireTexture();
-        using var dialog = new SaveFileDialog { Filter = "PNG image|*.png", FileName = Path.GetFileNameWithoutExtension(textureName(id).Replace('/', '_')) + ".png" };
-        if (dialog.ShowDialog(this) == DialogResult.OK) Imaging.SavePng(studio.TextureImage(id), dialog.FileName);
-    }
+    private void exportTexture() => TextureCommands.Export(this, requireStudio(), requireTexture());
 
-    private void revertTexture()
-    {
-        var studio = requireStudio();
-        var id = requireTexture();
-        var targets = studio.PropagationTargets(id, Propagation.Clones).Count;
-        var propagate = targets > 0 && Ui.Confirm(this, $"Also revert {targets} linked clone(s)?");
-        studio.RevertTexture(id, propagate ? Propagation.Clones : Propagation.None);
-        log($"Reverted {textureName(id)} to the original{(propagate ? $" with {targets} clone(s)" : "")}. Save all to write it.");
-    }
+    private void revertTexture() => TextureCommands.Revert(this, requireStudio(), requireTexture(), log);
 
-    private void exportAll()
+    private IReadOnlyList<TextureId> movieTextures()
     {
         var movie = requireMovie();
-        using var dialog = new FolderBrowserDialog { Description = "Folder for the movie's textures (PNG, named by packlist)", UseDescriptionForTitle = true };
-        if (dialog.ShowDialog(this) != DialogResult.OK) return;
-        var count = 0;
-        for (var i = 0; i < movie.TextureCount; i++)
-        {
-            var id = movie.GlobalTexture(i);
-            var name = Path.GetFileNameWithoutExtension(textureName(id).Replace('/', '_'));
-            Imaging.SavePng(requireStudio().TextureImage(id), Path.Combine(dialog.SelectedPath, $"{i:D4}_{name}.png"));
-            count++;
-        }
-        log($"Exported {count} textures to {dialog.SelectedPath}. Edit them and use Texture › Import edited PNG folder.");
+        return Enumerable.Range(0, movie.TextureCount).Select(movie.GlobalTexture).ToArray();
     }
 
-    private void importFolder()
-    {
-        var movie = requireMovie();
-        var studio = requireStudio();
-        using var dialog = new FolderBrowserDialog { Description = "Folder exported by 'Export all textures' (files named NNNN_name.png)", UseDescriptionForTitle = true };
-        if (dialog.ShowDialog(this) != DialogResult.OK) return;
-        var propagate = Ui.Confirm(this, "Propagate each changed texture to its linked clones?");
-        var changed = 0;
-        foreach (var file in Directory.GetFiles(dialog.SelectedPath, "*.png").Order(StringComparer.Ordinal))
-        {
-            var prefix = Path.GetFileName(file).Split('_')[0];
-            if (!int.TryParse(prefix, NumberStyles.Integer, CultureInfo.InvariantCulture, out var local) || local < 0 || local >= movie.TextureCount) continue;
-            var id = movie.GlobalTexture(local);
-            var image = RgbaImage.FromPng(File.ReadAllBytes(file));
-            if (image.Hash == studio.TextureImage(id).Hash) continue;
-            studio.ReplaceTexture(id, image, propagate ? Propagation.Clones : Propagation.None);
-            changed++;
-        }
-        log($"Imported {changed} changed texture(s) from {dialog.SelectedPath}. Save all to write them.");
-    }
+    private void exportAll() => TextureCommands.ExportAll(this, requireStudio(), movieTextures(), log);
+
+    private void importFolder() => TextureCommands.ImportFolder(this, requireStudio(), movieTextures(), log);
 
     private void syncClones()
     {
@@ -1017,8 +943,7 @@ internal sealed class MainWindow : Form
     {
         var studio = requireStudio();
         scanClones(force: false);
-        using var dialog = new CloneBrowserForm(studio, requireTexture());
-        dialog.ShowDialog(this);
+        TextureCommands.ShowClones(this, studio, requireTexture());
         _textures.Refresh(_movie?.Selected);
     }
 

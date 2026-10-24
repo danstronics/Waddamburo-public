@@ -71,9 +71,7 @@ public sealed class StudioSession
 
     public byte[] TextureNut(TextureId id)
     {
-        var bytes = ArchiveBytes(id.Archive);
-        var entry = DdpArchive.Open(bytes).Index.Textures[id.Index];
-        return bytes.AsSpan(checked((int)entry.Offset), checked((int)entry.Length)).ToArray();
+        return TextureContainers.ReadTexture(ArchiveBytes(id.Archive), ArchiveStore.Kind(id.Archive), id.Index);
     }
 
     /// <summary>The texture as the user currently sees it: pending edit, or saved content.</summary>
@@ -82,9 +80,8 @@ public sealed class StudioSession
 
     public RgbaImage SourceTextureImage(TextureId id)
     {
-        var bytes = Store.ReadSource(id.Archive);
-        var entry = DdpArchive.Open(bytes).Index.Textures[id.Index];
-        return RgbaImage.Decode(NutFile.Parse(bytes.AsMemory(checked((int)entry.Offset), checked((int)entry.Length))).Textures[0]);
+        var nut = TextureContainers.ReadTexture(Store.ReadSource(id.Archive), ArchiveStore.Kind(id.Archive), id.Index);
+        return RgbaImage.Decode(NutFile.Parse(nut).Textures[0]);
     }
 
     /// <summary>The movie's bytes including a pending edit.</summary>
@@ -126,9 +123,7 @@ public sealed class StudioSession
         {
             foreach (var target in targets)
             {
-                var source = Store.ReadSource(target.Archive);
-                var entry = DdpArchive.Open(source).Index.Textures[target.Index];
-                var nut = source.AsSpan(checked((int)entry.Offset), checked((int)entry.Length)).ToArray();
+                var nut = TextureContainers.ReadTexture(Store.ReadSource(target.Archive), ArchiveStore.Kind(target.Archive), target.Index);
                 set.Textures[target] = new PendingTexture(RgbaImage.Decode(NutFile.Parse(nut).Textures[0]), now, target, nut);
             }
         });
@@ -206,7 +201,7 @@ public sealed class StudioSession
             try
             {
                 var bytes = ArchiveBuilder.Build(Store, archive, Pending);
-                var report = CompatibilityChecker.Check(bytes, Store.ReadSource(archive));
+                var report = CompatibilityChecker.Check(bytes, Store.ReadSource(archive), ArchiveStore.Kind(archive));
                 issues.AddRange(report.Select(i => (archive, i)));
                 var errors = report.Where(i => i.Severity == IssueSeverity.Error).ToArray();
                 if (errors.Length > 0) { failed.Add((archive, string.Join(Environment.NewLine, errors.Select(e => e.Message)))); continue; }

@@ -15,15 +15,16 @@ internal sealed class ExplorerPanel : UserControl
     public ExplorerPanel()
     {
         Controls.Add(_tree); Controls.Add(_modifiedOnly); Controls.Add(_filter);
-        _tree.BeforeExpand += (_, e) => Ui.Guard(this, () => expand(e.Node));
-        _tree.NodeMouseDoubleClick += (_, e) => Ui.Guard(this, () => activate(e.Node));
+        _tree.BeforeExpand += (_, e) => { if (e.Node is { } node) Ui.Guard(this, () => expand(node)); };
+        _tree.NodeMouseDoubleClick += (_, e) => { if (e.Node is { } node) Ui.Guard(this, () => activate(node)); };
         _tree.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter && _tree.SelectedNode is { } node) Ui.Guard(this, () => activate(node)); };
         _filter.TextChanged += (_, _) => Reload();
         _modifiedOnly.CheckedChanged += (_, _) => Reload();
-        _tree.NodeMouseClick += (_, e) => { if (e.Button == MouseButtons.Right) { _tree.SelectedNode = e.Node; showMenu(e.Node, e.Location); } };
+        _tree.NodeMouseClick += (_, e) => { if (e.Button == MouseButtons.Right && e.Node is { } node) { _tree.SelectedNode = node; showMenu(node, e.Location); } };
     }
 
     public event Action<ArchiveId, string>? MovieOpened;
+    public event Action<ArchiveId>? TextureArchiveOpened;
     public event Action<ArchiveId>? RevertRequested;
 
     public void SetSession(StudioSession? studio)
@@ -42,15 +43,23 @@ internal sealed class ExplorerPanel : UserControl
             var filter = _filter.Text.Trim();
             foreach (var layer in _studio.Project.Layers)
             {
-                var layerNode = new TreeNode(layer.Name == StudioProject.MainLayer ? "Game data" : $"Layer: {layer.Name}{(layer.ProtectMovies ? " (textures only)" : "")}") { NodeFont = Theme.BoldFont };
+                var layerNode = new TreeNode(layer.Name switch
+                {
+                    StudioProject.MainLayer => "Lumen archives (lumendata)",
+                    StudioProject.DataLayer => "Other game data (nutdata, don3d…)",
+                    _ => $"Layer: {layer.Name}{(layer.ProtectMovies ? " (textures only)" : "")}",
+                }) { NodeFont = Theme.BoldFont };
                 var folders = new Dictionary<string, TreeNode>(StringComparer.Ordinal);
-                foreach (var path in PackedFolder.Archives(layer.SourcePacked))
+                foreach (var path in layer.Name == StudioProject.DataLayer ? ArchiveStore.DataArchives(layer.SourcePacked) : PackedFolder.Archives(layer.SourcePacked))
                 {
                     var id = new ArchiveId(layer.Name, path);
                     if (filter.Length > 0 && !path.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
                     if (_modifiedOnly.Checked && !_studio.Store.IsModified(id) && !_studio.Pending.Archives.Contains(id)) continue;
                     var folder = Path.GetDirectoryName(path)?.Replace('\\', '/') ?? "";
-                    var parentFolder = Path.GetDirectoryName(folder)?.Replace('\\', '/') ?? "";
+                    var fileName = Path.GetFileName(path);
+                    // packeddata.ddp / nutdatapack.ndp are named by their folder; other files by their own name.
+                    var container = fileName is "packeddata.ddp" or "nutdatapack.ndp" && folder.Length > 0;
+                    var parentFolder = container ? Path.GetDirectoryName(folder)?.Replace('\\', '/') ?? "" : folder;
                     var parent = layerNode;
                     if (parentFolder.Length > 0)
                     {
@@ -61,8 +70,8 @@ internal sealed class ExplorerPanel : UserControl
                         }
                         parent = group;
                     }
-                    var node = new TreeNode(Path.GetFileName(folder) is { Length: > 0 } name ? name : path) { Tag = id };
-                    node.Nodes.Add(new TreeNode("…"));
+                    var node = new TreeNode(container ? Path.GetFileName(folder) : fileName) { Tag = id };
+                    if (TextureContainers.KindOf(path) == ArchiveKind.Ddp) node.Nodes.Add(new TreeNode("…"));
                     parent.Nodes.Add(node);
                     _archiveNodes[id] = node;
                     decorate(node, id);
@@ -109,6 +118,9 @@ internal sealed class ExplorerPanel : UserControl
         switch (node.Tag)
         {
             case (ArchiveId id, string movie): MovieOpened?.Invoke(id, movie); break;
+            case ArchiveId id when TextureContainers.KindOf(id) != ArchiveKind.Ddp:
+                TextureArchiveOpened?.Invoke(id);
+                break;
             case ArchiveId id:
                 var movies = moviesOf(id).ToArray();
                 if (movies.Length == 1) MovieOpened?.Invoke(id, movies[0]);

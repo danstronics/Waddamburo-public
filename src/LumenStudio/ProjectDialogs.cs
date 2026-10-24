@@ -1,7 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using LumenStudio.Core;
-using Waddamburo.Formats.Ddp;
 using Waddamburo.Formats.Nut;
 
 namespace LumenStudio;
@@ -330,13 +329,14 @@ internal static class Validation
             count++;
             var current = studio.Store.ReadCurrent(archive);
             var original = studio.Store.ReadSource(archive);
-            var issues = CompatibilityChecker.Check(current, original);
+            var kind = ArchiveStore.Kind(archive);
+            var issues = CompatibilityChecker.Check(current, original, kind);
             var failed = issues.Any(i => i.Severity == IssueSeverity.Error);
             errors += failed ? 1 : 0;
-            var ddp = DdpArchive.Open(current);
-            var sourceIndex = DdpArchive.Open(original).Index;
-            var resized = ddp.Index.Textures.Count(t => t.Index < sourceIndex.Textures.Length && t.Length != sourceIndex.Textures[t.Index].Length);
-            text.AppendLine($"{(failed ? "FAIL" : "ok  ")}  {archive}  ({ddp.Index.TextureDataLength / 1048576.0:0.0} MiB textures{(resized > 0 ? $", {resized} resized" : "")})");
+            var after = TextureContainers.Textures(current, kind);
+            var before = TextureContainers.Textures(original, kind);
+            var resized = after.Zip(before).Count(p => p.First.Width != p.Second.Width || p.First.Height != p.Second.Height);
+            text.AppendLine($"{(failed ? "FAIL" : "ok  ")}  {archive}  ({after.Sum(t => (long)t.DataSize) / 1048576.0:0.0} MiB textures{(resized > 0 ? $", {resized} resized" : "")})");
             foreach (var issue in issues) text.AppendLine($"        {issue.Severity}: {issue.Message}");
         }
         text.Insert(0, $"{count} modified archive(s), {errors} with errors.\r\nChecked: DDP directory and trailer (largest-texture load buffer), 16-byte texture layout, NTP3 v1 headers,\r\nformat and size limits (4096), F007 texture sizes, LMB references and texture ranges.\r\n\r\n");

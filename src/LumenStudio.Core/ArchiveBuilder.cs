@@ -11,11 +11,13 @@ public static class ArchiveBuilder
     {
         var layer = store.Project.Layer(archive.Layer);
         var bytes = store.ReadCurrent(archive);
-        var ddp = DdpArchive.Open(bytes);
+        var kind = ArchiveStore.Kind(archive);
+        var ddp = kind == ArchiveKind.Ddp ? DdpArchive.Open(bytes) : null;
         var movies = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         foreach (var ((owner, movie), data) in changes.Movies)
         {
             if (owner != archive) continue;
+            if (ddp is null) throw new InvalidOperationException($"{archive} has no movies.");
             if (layer.ProtectMovies) throw new InvalidOperationException($"{archive}: movies in layer '{layer.Name}' are protected; only texture pixels may change.");
             movies[movie] = data;
         }
@@ -24,8 +26,7 @@ public static class ArchiveBuilder
         foreach (var (id, pending) in changes.Textures)
         {
             if (id.Archive != archive) continue;
-            var entry = ddp.Index.Textures[id.Index];
-            var template = bytes.AsMemory(checked((int)entry.Offset), checked((int)entry.Length));
+            var template = TextureContainers.ReadTexture(bytes, kind, id.Index);
             var original = NutFile.Parse(template).Textures[0];
             var image = pending.Image;
             if (!layer.AllowResize && (image.Width != original.Width || image.Height != original.Height))
@@ -37,7 +38,7 @@ public static class ArchiveBuilder
             else
                 nut = NutTextureWriter.Write(template, image.Width, image.Height, image.Rgba, original.Format);
             textures[id.Index] = nut;
-            if (image.Width == original.Width && image.Height == original.Height) continue;
+            if (ddp is null || image.Width == original.Width && image.Height == original.Height) continue;
             // Resized: keep the owning movie's F007 texture size in step with the NUT.
             var owner = ddp.Index.Movies.First(m => m.TextureBegin <= id.Index && id.Index < m.TextureEnd);
             if (!documents.TryGetValue(owner.Name, out var document))
@@ -46,7 +47,7 @@ public static class ArchiveBuilder
         }
         foreach (var (name, document) in documents)
             movies[name] = document.Export(preserveLayout: document.PreservesRecordLayout);
-        return DdpArchiveWriter.Rebuild(bytes, movies, textures);
+        return TextureContainers.ReplaceTextures(bytes, kind, textures, movies);
     }
 }
 
@@ -60,6 +61,35 @@ public sealed record CompatibilityIssue(IssueSeverity Severity, string Message);
 /// </summary>
 public static class CompatibilityChecker
 {
+    public static IReadOnlyList<CompatibilityIssue> Check(byte[] output, byte[] source, ArchiveKind kind) =>
+        kind == ArchiveKind.Ddp ? Check(output.AsMemory(), source.AsMemory()) : checkContainer(output, source, kind);
+
+    /// <summary>NDP packs and standalone NUTs: same texture count, parseable Green-layout NUTs, hardware size limit.</summary>
+    private static List<CompatibilityIssue> checkContainer(byte[] output, byte[] source, ArchiveKind kind)
+    {
+        var issues = new List<CompatibilityIssue>();
+        IReadOnlyList<NutTexture> after, before;
+        try { after = TextureContainers.Textures(output, kind); before = TextureContainers.Textures(source, kind); }
+        catch (Exception exception) { issues.Add(new(IssueSeverity.Error, "The archive does not parse: " + exception.Message)); return issues; }
+        if (after.Count != before.Count) issues.Add(new(IssueSeverity.Error, "The texture count changed."));
+        for (var i = 0; i < Math.Min(after.Count, before.Count); i++)
+        {
+            var t = after[i]; var o = before[i];
+            if (t.Width > NutTextureWriter.MaxDimension || t.Height > NutTextureWriter.MaxDimension) issues.Add(new(IssueSeverity.Error, $"Texture {i} exceeds {NutTextureWriter.MaxDimension} pixels."));
+            if (t.Format != o.Format) issues.Add(new(IssueSeverity.Warning, $"Texture {i} changed format ({o.Format} → {t.Format})."));
+            if (t.HeaderSize != o.HeaderSize) issues.Add(new(IssueSeverity.Error, $"Texture {i} changed its header size."));
+            if (kind == ArchiveKind.Ndp && (t.Width != o.Width || t.Height != o.Height))
+                issues.Add(new(IssueSeverity.Warning, $"Texture {i} was resized ({o.Width}×{o.Height} → {t.Width}×{t.Height}); NDP packs have no load-buffer field, so verify on hardware."));
+        }
+        if (kind == ArchiveKind.Ndp)
+        {
+            var ndp = Waddamburo.Formats.Ddp.NdpArchive.Parse(output);
+            foreach (var entry in ndp.Entries.Where(e => e.RelativeOffset % 16 != 0))
+                issues.Add(new(IssueSeverity.Error, $"NDP entry {entry.Name} is not 16-byte aligned."));
+        }
+        return issues;
+    }
+
     public static IReadOnlyList<CompatibilityIssue> Check(ReadOnlyMemory<byte> output, ReadOnlyMemory<byte> source)
     {
         var issues = new List<CompatibilityIssue>();

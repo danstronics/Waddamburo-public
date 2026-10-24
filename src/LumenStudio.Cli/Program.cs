@@ -40,6 +40,10 @@ try
             var families = index.Families.ToArray();
             Console.WriteLine($"{entries.Count} textures, {entries.Count(e => e.Modified)} modified, {families.Length} clone families covering {families.Sum(f => f.Count)} textures");
             Console.WriteLine($"uniform families: {families.Count(f => f[0].Uniform)}; families with disagreeing members: {families.Count(f => f.Select(m => m.CurrentHash).Distinct().Count() > 1)}");
+            var crossLayer = families.Where(f => f.Select(m => m.Id.Archive.Layer).Distinct().Count() > 1).ToArray();
+            Console.WriteLine($"families spanning layers: {crossLayer.Length} ({crossLayer.Sum(f => f.Count)} textures)");
+            foreach (var f in crossLayer.Where(f => !f[0].Uniform).Take(5))
+                Console.WriteLine("  e.g. " + string.Join(" = ", f.Take(4).Select(m => $"{m.Id} {m.Name}")));
             var buckets = entries.Where(e => e.Modified).GroupBy(e => e.ChangedPixels switch { < 0 => "resized", 0 => "0", < 4 => "1-3", < 16 => "4-15", < 64 => "16-63", < 256 => "64-255", _ => "256+" })
                 .Select(g => $"{g.Key}: {g.Count()}");
             Console.WriteLine("visibly changed texels in modified textures — " + string.Join(", ", buckets));
@@ -63,7 +67,7 @@ try
         case "replace":
         {
             var session = open(positional[1]);
-            var id = new TextureId(new ArchiveId(StudioProject.MainLayer, positional[2]), int.Parse(positional[3], CultureInfo.InvariantCulture));
+            var id = new TextureId(archiveId(positional[2]), int.Parse(positional[3], CultureInfo.InvariantCulture));
             var image = RgbaImage.FromPng(File.ReadAllBytes(positional[4]));
             var targets = session.ReplaceTexture(id, image, flags.Contains("--no-propagate") ? Propagation.None : Propagation.Clones);
             Console.WriteLine($"Replacing {targets.Count} texture(s) with a {image.Width}×{image.Height} image.");
@@ -72,7 +76,7 @@ try
         case "export":
         {
             var session = StudioSession.Open(StudioProject.Load(positional[1]));
-            var id = new TextureId(new ArchiveId(StudioProject.MainLayer, positional[2]), int.Parse(positional[3], CultureInfo.InvariantCulture));
+            var id = new TextureId(archiveId(positional[2]), int.Parse(positional[3], CultureInfo.InvariantCulture));
             File.WriteAllBytes(positional[4], session.TextureImage(id).ToPng());
             return 0;
         }
@@ -92,7 +96,7 @@ try
             var errors = 0;
             foreach (var archive in store.Archives().Where(store.IsModified))
             {
-                var issues = CompatibilityChecker.Check(store.ReadCurrent(archive), store.ReadSource(archive));
+                var issues = CompatibilityChecker.Check(store.ReadCurrent(archive), store.ReadSource(archive), ArchiveStore.Kind(archive));
                 errors += issues.Count(i => i.Severity == IssueSeverity.Error);
                 Console.WriteLine($"{(issues.Any(i => i.Severity == IssueSeverity.Error) ? "FAIL" : "ok  ")} {archive}");
                 foreach (var issue in issues) Console.WriteLine($"     {issue.Severity}: {issue.Message}");
@@ -108,6 +112,10 @@ catch (Exception exception) when (exception is ArgumentException or IOException 
     Console.Error.WriteLine("error: " + exception.Message);
     return 2;
 }
+
+// "layer:path" names an archive in another layer, e.g. data:nutdata/cos_name/nutdatapack.ndp.
+static ArchiveId archiveId(string text) => text.IndexOf(':') is var colon and > 1
+    ? new ArchiveId(text[..colon], text[(colon + 1)..]) : new ArchiveId(StudioProject.MainLayer, text);
 
 static StudioSession open(string path)
 {

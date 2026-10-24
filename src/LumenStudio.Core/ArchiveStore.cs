@@ -1,5 +1,4 @@
 using System.Text;
-using Waddamburo.Formats.Ddp;
 
 namespace LumenStudio.Core;
 
@@ -9,7 +8,20 @@ public sealed class ArchiveStore(StudioProject project)
     public StudioProject Project { get; } = project;
 
     public IEnumerable<ArchiveId> Archives() =>
-        Project.Layers.SelectMany(layer => PackedFolder.Archives(layer.SourcePacked).Select(path => new ArchiveId(layer.Name, path)));
+        Project.Layers.SelectMany(layer => (layer.Name == StudioProject.DataLayer ? DataArchives(layer.SourcePacked) : PackedFolder.Archives(layer.SourcePacked))
+            .Select(path => new ArchiveId(layer.Name, path)));
+
+    public static ArchiveKind Kind(ArchiveId id) => TextureContainers.KindOf(id);
+
+    /// <summary>Texture archives in a data folder outside lumendata/packed (which the main layer covers).</summary>
+    public static IEnumerable<string> DataArchives(string data) =>
+        Directory.Exists(data)
+            ? Directory.EnumerateFiles(data, "*.*", SearchOption.AllDirectories)
+                .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".ddp" or ".ndp" or ".nut")
+                .Select(f => Path.GetRelativePath(data, f).Replace('\\', '/'))
+                .Where(p => !p.StartsWith("lumendata/packed/", StringComparison.OrdinalIgnoreCase))
+                .Order(StringComparer.Ordinal)
+            : [];
 
     public string SourcePath(ArchiveId id) => Path.Combine(Project.Layer(id.Layer).SourcePacked, id.Path);
 
@@ -41,7 +53,7 @@ public sealed class ArchiveStore(StudioProject project)
     /// </summary>
     public void WriteOutput(ArchiveId id, byte[] bytes)
     {
-        _ = DdpArchive.Open(bytes);
+        _ = TextureContainers.Slots(bytes, Kind(id), Path.GetFileName(id.Path));
         var output = OutputPath(id);
         if (bytes.AsSpan().SequenceEqual(ReadSource(id)))
         {

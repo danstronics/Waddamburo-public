@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Drawing.Drawing2D;
 using Waddamburo.Formats.Lmb;
 
 namespace LumenStudio;

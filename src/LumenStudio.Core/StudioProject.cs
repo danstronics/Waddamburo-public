@@ -12,6 +12,7 @@ public sealed class StudioProject
 {
     public const string Extension = ".lstudio";
     public const string MainLayer = "main";
+    public const string DataLayer = "data";
 
     public int Version { get; set; } = 1;
 
@@ -28,6 +29,9 @@ public sealed class StudioProject
 
     public string? FontPath { get; set; }
 
+    /// <summary>Also edit textures outside lumendata/packed (nutdata NDP/NUT packs, don3d, other DDPs) as the "data" layer.</summary>
+    public bool IncludeOtherData { get; set; } = true;
+
     public List<LinkedLayer> Linked { get; set; } = [];
 
     /// <summary>Textures excluded from clone propagation, as <see cref="TextureId.Key"/>.</summary>
@@ -38,9 +42,26 @@ public sealed class StudioProject
     [JsonIgnore] public string DataDirectory => Path + ".data";
 
     [JsonIgnore]
-    public IReadOnlyList<Layer> Layers =>
-        [new Layer(MainLayer, BasePacked, OutputPacked, AllowResize: true, ProtectMovies: false),
-         .. Linked.Select(l => new Layer(l.Name, l.SourcePacked, l.OutputPacked, l.AllowResize, l.ProtectMovies))];
+    public IReadOnlyList<Layer> Layers
+    {
+        get
+        {
+            var layers = new List<Layer> { new(MainLayer, BasePacked, OutputPacked, AllowResize: true, ProtectMovies: false) };
+            // data/lumendata/packed → data: the rest of the game data, written to the overlay's data folder.
+            if (IncludeOtherData && dataFolder(BasePacked) is { } baseData && dataFolder(OutputPacked, mustExist: false) is { } outputData)
+                layers.Add(new Layer(DataLayer, baseData, outputData, AllowResize: true, ProtectMovies: false));
+            layers.AddRange(Linked.Select(l => new Layer(l.Name, l.SourcePacked, l.OutputPacked, l.AllowResize, l.ProtectMovies)));
+            return layers;
+        }
+    }
+
+    private static string? dataFolder(string packed, bool mustExist = true)
+    {
+        var lumendata = Directory.GetParent(System.IO.Path.TrimEndingDirectorySeparator(packed));
+        var data = lumendata?.Parent;
+        if (data is null || !lumendata!.Name.Equals("lumendata", StringComparison.OrdinalIgnoreCase) || !data.Name.Equals("data", StringComparison.OrdinalIgnoreCase)) return null;
+        return !mustExist || data.Exists ? data.FullName : null;
+    }
 
     public Layer Layer(string name) => Layers.FirstOrDefault(l => l.Name == name)
         ?? throw new KeyNotFoundException($"Unknown layer '{name}'.");
@@ -77,10 +98,10 @@ public sealed class StudioProject
     public void Validate()
     {
         if (!Directory.Exists(BasePacked)) throw new DirectoryNotFoundException($"The original game data folder is missing: {BasePacked}");
-        var names = new HashSet<string>(StringComparer.Ordinal) { MainLayer };
+        var names = new HashSet<string>(StringComparer.Ordinal) { MainLayer, DataLayer };
         foreach (var layer in Layers)
         {
-            if (layer.Name != MainLayer && !names.Add(layer.Name)) throw new InvalidDataException($"Duplicate layer name '{layer.Name}'.");
+            if (layer.Name is not (MainLayer or DataLayer) && !names.Add(layer.Name)) throw new InvalidDataException($"Duplicate layer name '{layer.Name}'.");
             if (PathsOverlap(layer.SourcePacked, layer.OutputPacked))
                 throw new InvalidDataException($"Layer '{layer.Name}': the output folder must be separate from its source.");
         }
