@@ -94,6 +94,9 @@ internal sealed class TimelineView : Control
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)] public int CurrentFrame { get; private set; }
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)] public ushort? SelectedDepth { get; set; }
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)] public string Heading { get; set; } = "";
+    /// <summary>The animation being looped; frames outside it are dimmed.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)] public (int Start, int End)? ActiveRange { get => _activeRange; set { _activeRange = value; Invalidate(); } }
+    private (int Start, int End)? _activeRange;
     public TimelineModel Model => _model;
 
     public event Action<int>? FrameRequested;
@@ -172,12 +175,15 @@ internal sealed class TimelineView : Control
             for (var frame = first; frame <= last; frame++)
                 if (frame % step != 0) { var x = frameX(frame); g.DrawLine(gridPen, x, RulerHeight - 4, x, RulerHeight); }
         using (var labelBrush = new SolidBrush(Color.FromArgb(240, 190, 90)))
-            foreach (var (frame, label) in _model.Labels)
+            for (var i = 0; i < _model.Labels.Count; i++)
             {
+                var (frame, label) = _model.Labels[i];
                 if (frame < first - 50 || frame > last) continue;
                 var x = frameX(frame);
                 g.FillPolygon(labelBrush, new[] { new PointF(x, RulerHeight + 2), new PointF(x + 7, RulerHeight + 6), new PointF(x, RulerHeight + 10) });
-                g.DrawString(label, Font, labelBrush, x + 8, RulerHeight);
+                // The name gets the room up to the next label; labels on adjacent frames show only their flags.
+                var next = _model.Labels.Where(l => l.Frame > frame).Select(l => frameX(l.Frame)).DefaultIfEmpty(width).Min();
+                if (next - x > 24) g.DrawString(label, Font, labelBrush, new RectangleF(x + 8, RulerHeight, next - x - 10, LabelRow));
             }
         using (var actionBrush = new SolidBrush(Color.FromArgb(150, 130, 240)))
             foreach (var (frame, _) in _model.Actions)
@@ -229,6 +235,16 @@ internal sealed class TimelineView : Control
         }
         g.ResetClip();
         g.DrawLine(majorPen, HeaderWidth - 1, 0, HeaderWidth - 1, height);
+
+        if (ActiveRange is { } range)
+        {
+            using var dim = new SolidBrush(Color.FromArgb(110, 10, 12, 16));
+            using var band = new SolidBrush(Color.FromArgb(70, 89, 220, 244));
+            var x0 = Math.Max(HeaderWidth, frameX(range.Start)); var x1 = Math.Min(width, frameX(range.End + 1));
+            if (x0 > HeaderWidth) g.FillRectangle(dim, HeaderWidth, 0, x0 - HeaderWidth, height);
+            if (x1 < width) g.FillRectangle(dim, x1, 0, width - x1, height);
+            if (x1 > x0) g.FillRectangle(band, x0, RulerHeight - 4, x1 - x0, 4);
+        }
 
         // Playhead.
         var playhead = frameX(CurrentFrame) + Math.Min(_frameWidth, 10) / 2;

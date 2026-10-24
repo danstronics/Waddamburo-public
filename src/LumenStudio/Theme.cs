@@ -166,11 +166,15 @@ internal static class Ui
         return button;
     }
 
+    /// <summary>Automated runs (--capture): errors go to this file instead of a blocking message box.</summary>
+    public static string? HeadlessErrorLog { get; set; }
+
     public static void Guard(Control? owner, Action action)
     {
         try { action(); }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
+            if (HeadlessErrorLog is not null) { File.AppendAllText(HeadlessErrorLog, exception + Environment.NewLine); return; }
             MessageBox.Show(owner?.FindForm(), exception.Message, "LumenStudio", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }

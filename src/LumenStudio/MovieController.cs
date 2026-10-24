@@ -112,6 +112,7 @@ internal sealed class MovieController
         if (!Document.Definition.Sprites.Any(s => s.CharacterId == spriteId && s.DeclaredFrameCount > 0))
             throw new InvalidOperationException("Only sprites with a timeline can be entered.");
         ViewRoot = spriteId; Selected = null; Playing = false;
+        ActiveClip = null; ForcedStates.Clear();
         rebuild(0);
     }
 
@@ -119,6 +120,7 @@ internal sealed class MovieController
     {
         if (!Isolated) return;
         ViewRoot = SceneRoot; Selected = null; Playing = false;
+        ActiveClip = null; ForcedStates.Clear();
         rebuild(0);
     }
 
@@ -144,14 +146,86 @@ internal sealed class MovieController
     {
         frame = Math.Clamp(frame, 0, FrameCount - 1);
         Player.Seek(frame);
+        ApplyStates();
         if (!Playing) Player.Stop();
         invalidate();
     }
 
     public void Advance(int frames)
     {
-        for (var i = 0; i < frames; i++) Player.Advance();
+        for (var i = 0; i < frames; i++)
+        {
+            Player.Advance();
+            // A forced child state loops inside its own segment instead of running into the next state.
+            foreach (var (path, state) in ForcedStates)
+                if (Player.InstanceFrame(path) is { } child && (child.Frame < state.Start || child.Frame > state.End))
+                    Player.TryGotoFrame(path, state.Start, play: true);
+            if (ActiveClip is not { } clip) continue;
+            var frame = Player.CurrentFrame;
+            if (frame >= clip.Start && frame <= clip.End) continue;
+            // Keep playback inside the chosen animation: loop to its start, or hold its last frame.
+            if (Loop) { Player.GotoFrame(clip.Start, true); ApplyStates(); }
+            else { Player.GotoFrame(clip.End, false); Playing = false; break; }
+        }
         invalidate();
+    }
+
+    /// <summary>The animation being previewed; null plays the whole timeline.</summary>
+    public AnimationClip? ActiveClip { get; private set; }
+
+    public bool Loop { get; set; } = true;
+
+    /// <summary>Child sprite states forced by the user (instance path → label), re-applied after seeks and loops.</summary>
+    public Dictionary<string, AnimationClip> ForcedStates { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Label segments of the viewed timeline, grouped by name stem into variants (in_1p / in_2p).</summary>
+    public IReadOnlyList<AnimationGroup> Animations => AnimationGroup.Build(Document.Definition, ViewSprite);
+
+    public void SetClip(AnimationClip? clip)
+    {
+        ActiveClip = clip;
+        Player.Seek(clip?.Start ?? 0);
+        ApplyStates();
+        if (Playing) Player.Play(); else Player.Stop();
+        invalidate();
+    }
+
+    public void ForceState(string path, AnimationClip? state)
+    {
+        if (state is null) ForcedStates.Remove(path); else ForcedStates[path] = state;
+        ApplyStates();
+        invalidate();
+    }
+
+    public void ApplyStates()
+    {
+        foreach (var (path, state) in ForcedStates) Player.TryGotoFrame(path, state.Start, play: true);
+    }
+
+    /// <summary>Named child sprites (up to three levels) whose timelines have states (labels) a script could choose.</summary>
+    public IReadOnlyList<ChildStates> StatefulChildren()
+    {
+        var movie = Document.Definition;
+        var sprites = movie.Sprites.ToDictionary(s => s.CharacterId);
+        var result = new List<ChildStates>();
+        void visit(uint sprite, int frame, string prefix, int depth)
+        {
+            if (depth > 3 || result.Count > 60 || !sprites.TryGetValue(sprite, out var definition) || definition.DeclaredFrameCount == 0) return;
+            frame = Math.Clamp(frame, 0, (int)definition.DeclaredFrameCount - 1);
+            foreach (var place in Document.Placements(sprite, frame))
+            {
+                if (StringAt(place.NameStringIndex) is not { Length: > 0 } name || place.NameStringIndex == 0) continue;
+                var path = prefix.Length == 0 ? name : prefix + "/" + name;
+                if (sprites.TryGetValue(place.CharacterId, out var child))
+                {
+                    var segments = AnimationGroup.Build(movie, child).SelectMany(g => g.Variants).OrderBy(v => v.Start).ToArray();
+                    if (segments.Length >= 2) result.Add(new ChildStates(path, $"{path} (sprite {child.CharacterId})", segments.Select(s => s.Label).ToArray(), segments));
+                    visit(child.CharacterId, 0, path, depth + 1);
+                }
+            }
+        }
+        visit(ViewRoot, ActiveClip?.Start ?? Frame, "", 0);
+        return result;
     }
 
     /// <summary>Top-most visible element under a stage point, or null.</summary>
@@ -312,6 +386,7 @@ internal sealed class MovieController
         _player = null; _snapshot = null;
         var player = Player;
         if (frame > 0 && frame < FrameCount) player.Seek(frame);
+        ApplyStates();
         if (Playing) player.Play(); else player.Stop();
         invalidate();
         reselect();

@@ -29,7 +29,12 @@ only the archives you changed, in the game's own folder structure: copy it over 
    - **Text** tab: dynamic text fields' HTML. **Strings** tab: the string pool (script text), with usages.
    - **Scripts**: the AVM1 editor (lossless assembly with a decompiled view).
 5. **Save all** (Ctrl+S) writes the changed archives to the overlay. **Tools › Validate** checks them.
-6. **F5** opens the movie (with unsaved edits) in Waddamburo; **Ctrl+F5** starts the whole game on a
+6. **Animations** (bar above the timeline): a movie's labelled parts are separate animations. Pick one and
+   only that part plays, looping (untick *Loop* to stop at its end). Animations sharing a name stem
+   (`in_1p` / `in_2p`, `select_on` / `select_off`) are one animation with a **Variant** selector.
+   **Child states** forces the state of child sprites that scripts would choose (for example
+   `name_bg` = `off` / `1p_on` / `2p_on` / `1p_2p_on`); each forced state loops within its own part.
+7. **F5** opens the movie (with unsaved edits) in Waddamburo; **Ctrl+F5** starts the whole game on a
    preview folder made of links to the original data plus your overlay.
 
 ## Clone propagation ("most recent edit wins")

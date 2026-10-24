@@ -28,9 +28,16 @@ internal sealed class MainWindow : Form
     private readonly ToolStripButton _scriptsButton = new("Scripts on") { CheckOnClick = true, ToolTipText = "Run ActionScript in the preview (off shows the authored layout)" };
     private readonly ToolStripButton _wholeTrackButton = new("Move: whole track") { CheckOnClick = true, ToolTipText = "Dragging moves every key of the element's track (off: only the current frame's key)" };
     private readonly ToolStripButton _placeholdersButton = new("Host slots") { CheckOnClick = true, ToolTipText = "Outline text fields and host-drawn slots (titles, Don) that the game fills at runtime" };
+    private readonly ComboBox _clips = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300 };
+    private readonly ComboBox _variants = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 170 };
+    private readonly Label _variantLabel = new() { Text = "Variant", AutoSize = true, Margin = new Padding(10, 7, 3, 0) };
+    private readonly CheckBox _loop = new() { Text = "Loop", Checked = true, AutoSize = true, Margin = new Padding(10, 5, 3, 0) };
+    private readonly Button _states = new() { Text = "Child states ▾", AutoSize = true, Height = 26 };
     private readonly System.Windows.Forms.Timer _clock = new() { Interval = 8 };
     private readonly Stopwatch _playClock = new();
     private double _frameDebt;
+    private int _playedFrames;
+    private bool _emptyHintShown;
     private StudioSession? _studio;
     private MovieController? _movie;
     private bool _refreshing;
@@ -58,6 +65,7 @@ internal sealed class MainWindow : Form
         var centre = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterWidth = 4, FixedPanel = FixedPanel.Panel2 };
         centre.Panel1.Controls.Add(stageHost);
         centre.Panel2.Controls.Add(_timeline);
+        centre.Panel2.Controls.Add(buildAnimationBar());
         // Right: inspector tabs and log.
         var elementPage = new TabPage("Element");
         elementPage.Controls.Add(_properties); elementPage.Controls.Add(_elementInfo);
@@ -97,12 +105,15 @@ internal sealed class MainWindow : Form
         updateTitle();
         log("LumenStudio ready. File › New project (original data + output overlay) or File › Open project.");
 
+        if (args.FirstOrDefault(a => a.StartsWith("--capture=", StringComparison.Ordinal)) is { } headless)
+            Ui.HeadlessErrorLog = Path.ChangeExtension(headless[10..], ".errors.txt");
         Shown += (_, _) => Ui.Guard(this, () =>
         {
             var input = args.FirstOrDefault(a => !a.StartsWith("--", StringComparison.Ordinal));
             if (input is not null && input.EndsWith(StudioProject.Extension, StringComparison.OrdinalIgnoreCase)) openProject(input);
             else if (_settings.RecentProjects.FirstOrDefault(File.Exists) is { } recent && !args.Contains("--no-recent")) openProject(recent);
             if (args.Contains("--no-scripts")) _scriptsButton.Checked = false;
+            if (args.Contains("--scripts")) _scriptsButton.Checked = true;
             var movieArg = args.FirstOrDefault(a => a.StartsWith("--movie=", StringComparison.Ordinal))?[8..];
             var archiveArg = args.FirstOrDefault(a => a.StartsWith("--archive=", StringComparison.Ordinal))?[10..];
             if (_studio is not null && archiveArg is not null)
@@ -142,6 +153,42 @@ internal sealed class MainWindow : Form
                 }
             }
             if (args.Contains("--build-preview") && _studio is not null) log("Preview root: " + WaddamburoLauncher.BuildPreviewRoot(_studio.Project));
+            if (args.FirstOrDefault(a => a.StartsWith("--tween=", StringComparison.Ordinal)) is { } tweenSpec && _movie is not null)
+            {
+                var p = tweenSpec[8..].Split(',').Select(v => float.Parse(v, CultureInfo.InvariantCulture)).ToArray();
+                var movie = _movie; var end = (int)p[1];
+                var available = movie.Document.Placements(movie.ViewRoot, 0);
+                var place = p[0] < 0 ? available.First() : available.FirstOrDefault(x => x.Depth == (ushort)p[0])
+                    ?? throw new InvalidOperationException($"No element at depth {p[0]}; frame 0 has depths {string.Join(", ", available.Select(x => x.Depth))}.");
+                var depth = place.Depth;
+                if (end >= movie.FrameCount) movie.Edit(d => d.ExtendTimeline(movie.ViewRoot, end + 1));
+                var m = movie.Document.Matrix(place);
+                movie.Edit(d => d.Tween(movie.ViewRoot, depth, 0, end, m with { X = m.X + p[2], Y = m.Y + p[3], M11 = m.M11 * 0.6f, M22 = m.M22 * 0.6f }, d.Opacity(place), true));
+                log($"Tween on depth {depth}: frames 0–{end}, move {p[2]}, {p[3]}, scale 60%.");
+                refreshMovie();
+                movie.Seek(end / 2); refreshFrame();
+            }
+            if (args.FirstOrDefault(a => a.StartsWith("--clip=", StringComparison.Ordinal)) is { } clipName && _movie is not null)
+            {
+                var label = clipName[7..];
+                var group = _clips.Items.OfType<AnimationGroup>().First(g => g.Name == label || g.Variants.Any(v => v.Label == label));
+                _clips.SelectedItem = group;
+                _variants.SelectedIndex = Math.Max(0, group.Variants.ToList().FindIndex(v => v.Label == label));
+            }
+            foreach (var state in args.Where(a => a.StartsWith("--state=", StringComparison.Ordinal)))
+            {
+                var pair = state[8..].Split('=');
+                if (_movie?.StatefulChildren().FirstOrDefault(c => c.Path == pair[0]) is { } target) _movie.ForceState(pair[0], target.Segment(pair[1]));
+            }
+            if (args.Contains("--list-states") && _movie is not null)
+                foreach (var child in _movie.StatefulChildren()) log($"state toggle: {child.Display}: {string.Join(", ", child.Labels)}");
+            if (args.FirstOrDefault(a => a.StartsWith("--play=", StringComparison.Ordinal)) is { } play && _movie is not null)
+            {
+                _movie.Play();
+                _movie.Advance(int.Parse(play[7..], CultureInfo.InvariantCulture));
+                _movie.Pause();
+                refreshFrame();
+            }
             if (args.Contains("--save")) saveAll();
             if (args.FirstOrDefault(a => a.StartsWith("--tab=", StringComparison.Ordinal)) is { } tab)
                 _inspector.SelectedIndex = Math.Clamp(int.Parse(tab[6..], CultureInfo.InvariantCulture), 0, _inspector.TabCount - 1);
@@ -304,6 +351,100 @@ internal sealed class MainWindow : Form
         tool("▶ Waddamburo", () => testMovie(layoutOnly: false), "Open this movie, with unsaved edits, in Waddamburo (F5)");
         tool("Fit", _stage.Fit, "Fit the stage (Ctrl+0)");
         return toolbar;
+    }
+
+    /// <summary>Animation picker: one labelled animation at a time, its variants, loop and forced child states.</summary>
+    private FlowLayoutPanel buildAnimationBar()
+    {
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 32, WrapContents = false, Padding = new Padding(4, 2, 4, 0) };
+        bar.Controls.AddRange([new Label { Text = "Animation", AutoSize = true, Margin = new Padding(3, 7, 3, 0) }, _clips, _variantLabel, _variants, _loop, _states]);
+        new ToolTip().SetToolTip(_clips, "Plays only this labelled part of the timeline (instead of every animation in a row)");
+        new ToolTip().SetToolTip(_states, "Force the state (label) of child sprites that scripts would normally choose");
+        _clips.SelectedIndexChanged += (_, _) => Ui.Guard(this, clipChanged);
+        _variants.SelectedIndexChanged += (_, _) => Ui.Guard(this, variantChanged);
+        _loop.CheckedChanged += (_, _) => { if (_movie is not null) _movie.Loop = _loop.Checked; };
+        _states.Click += (_, _) => Ui.Guard(this, showStates);
+        return bar;
+    }
+
+    private bool _fillingClips;
+
+    /// <summary>Lists the viewed timeline's animations, keeping the current choice when it still exists.</summary>
+    private void fillClips(bool selectFirst)
+    {
+        if (_movie is null) { _clips.Items.Clear(); _variants.Items.Clear(); return; }
+        var current = _movie.ActiveClip;
+        _fillingClips = true;
+        try
+        {
+            _clips.Items.Clear();
+            _clips.Items.Add("Whole timeline");
+            foreach (var group in _movie.Animations) _clips.Items.Add(group);
+            var index = current is null ? 0 : _clips.Items.Cast<object>().ToList().FindIndex(o => o is AnimationGroup g && g.Variants.Any(v => v.Label == current.Label));
+            if (selectFirst && current is null && _clips.Items.Count > 1) index = 1;
+            _clips.SelectedIndex = Math.Max(0, index);
+        }
+        finally { _fillingClips = false; }
+        clipChanged();
+    }
+
+    private void clipChanged()
+    {
+        if (_fillingClips || _movie is null) return;
+        var group = _clips.SelectedItem as AnimationGroup;
+        _fillingClips = true;
+        try
+        {
+            _variants.Items.Clear();
+            if (group is not null) foreach (var variant in group.Variants) _variants.Items.Add(variant.Variant);
+            var keep = group?.Variants.ToList().FindIndex(v => v.Label == _movie.ActiveClip?.Label) ?? -1;
+            if (_variants.Items.Count > 0) _variants.SelectedIndex = Math.Max(0, keep);
+            _variants.Visible = _variantLabel.Visible = group is { Variants.Count: > 1 };
+        }
+        finally { _fillingClips = false; }
+        variantChanged();
+    }
+
+    private void variantChanged()
+    {
+        if (_fillingClips || _movie is null) return;
+        var clip = _clips.SelectedItem is AnimationGroup group && _variants.SelectedIndex >= 0 ? group.Variants[_variants.SelectedIndex] : null;
+        if (clip == _movie.ActiveClip) return;
+        _movie.SetClip(clip);
+        _timeline.ActiveRange = clip is null ? null : (clip.Start, clip.End);
+        refreshFrame();
+        showSelection();
+    }
+
+    private void showStates()
+    {
+        var movie = requireMovie();
+        var menu = new ContextMenuStrip();
+        var children = movie.StatefulChildren();
+        if (children.Count == 0) menu.Items.Add("No named child sprites with states in this animation").Enabled = false;
+        foreach (var child in children)
+        {
+            var item = new ToolStripMenuItem(child.Display);
+            var forced = movie.ForcedStates.TryGetValue(child.Path, out var forcedState) ? forcedState.Label : null;
+            if (forced is not null) item.Text += $"  = {forced}";
+            var authored = new ToolStripMenuItem("(authored / script decides)") { Checked = forced is null };
+            authored.Click += (_, _) => Ui.Guard(this, () => { movie.ForceState(child.Path, null); refreshFrame(); });
+            item.DropDownItems.Add(authored);
+            foreach (var label in child.Labels)
+            {
+                var state = new ToolStripMenuItem(label) { Checked = forced == label };
+                state.Click += (_, _) => Ui.Guard(this, () => { movie.ForceState(child.Path, child.Segment(label)); refreshFrame(); showSelection(); });
+                item.DropDownItems.Add(state);
+            }
+            menu.Items.Add(item);
+        }
+        if (movie.ForcedStates.Count > 0)
+        {
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("Clear all forced states", null, (_, _) => Ui.Guard(this, () => { foreach (var path in movie.ForcedStates.Keys.ToArray()) movie.ForceState(path, null); refreshFrame(); }));
+        }
+        Theme.Apply(menu);
+        menu.Show(_states, new Point(0, _states.Height));
     }
 
     private void wireEvents()
@@ -487,6 +628,7 @@ internal sealed class MainWindow : Form
         {
             closeMovie();
             _movie = new MovieController(studio, archive, movie) { RunScripts = _scriptsButton.Checked };
+            _playedFrames = 0; _emptyHintShown = false;
             _movie.FrameChanged += () => { };
             _stage.StageWidth = _movie.StageWidth; _stage.StageHeight = _movie.StageHeight;
             var root = studio.Project.GameRoot ?? PackedFolder.GameRootOf(studio.Project.BasePacked);
@@ -494,8 +636,6 @@ internal sealed class MainWindow : Form
             _textures.SetMovie(_movie); _strings.SetMovie(_movie); _scripts.SetMovie(_movie);
             _stage.Fit();
             refreshMovie();
-            if (_movie.RunScripts && !_movie.Snapshot.Quads.Any(q => q.MultiplyColor.Alpha > 0))
-                log("The scene draws nothing with scripts on: its scripts wait for the game host. Turn 'Scripts on' off to see the authored layout.");
             log($"Opened {_movie.Title}: {_movie.Document.Definition.Sprites.Length} sprites, {_movie.Document.Definition.Shapes.Length} shapes, {_movie.TextureCount} textures, {_movie.FrameCount} frames at {_movie.FrameRate:0.#} fps{(_movie.Protected ? " · movie protected (textures only)" : "")}.");
             updateTitle();
         }
@@ -520,14 +660,27 @@ internal sealed class MainWindow : Form
         {
             _timeline.Heading = _movie.Isolated ? $"{_movie.SpriteName(_movie.ViewRoot)} (entered)" : $"{_movie.SpriteName(_movie.ViewRoot)} (scene)";
             _timeline.SetModel(TimelineModel.Build(_movie.Document.Definition, _movie.ViewSprite));
+            var freshTimeline = !ReferenceEquals(_clipsMovie, _movie) || _clipsRoot != _movie.ViewRoot;
+            _clipsMovie = _movie; _clipsRoot = _movie.ViewRoot;
+            if (freshTimeline) _movie.Loop = _loop.Checked;
+            if (freshTimeline) _clipsFreshPending = true;
             _strings.Reload();
             _scripts.Reload();
             _stage.CanTransform = !_movie.Protected;
         }
         finally { _refreshing = false; }
+        if (_clipsFreshPending && _movie.Animations is { Count: > 0 } found)
+            log('"' + _movie.SpriteName(_movie.ViewRoot) + "\" animations: " + string.Join(", ", found.Select(g => g.Variants.Count > 1 ? g.Name + " [" + string.Join("/", g.Variants.Select(v => v.Variant)) + "]" : g.Name)));
+        fillClips(selectFirst: _clipsFreshPending);
+        _clipsFreshPending = false;
+        _timeline.ActiveRange = _movie.ActiveClip is { } active ? (active.Start, active.End) : null;
         refreshFrame();
         showSelection();
     }
+
+    private MovieController? _clipsMovie;
+    private uint _clipsRoot;
+    private bool _clipsFreshPending;
 
     private void refreshFrame()
     {
@@ -553,6 +706,12 @@ internal sealed class MainWindow : Form
         _frameDebt -= frames;
         _movie.Advance(frames);
         _stage.AdvanceNative(frames);
+        _playedFrames += frames;
+        if (!_emptyHintShown && _playedFrames >= 120 && _movie.RunScripts && !_movie.Snapshot.Quads.Any(q => q.MultiplyColor.Alpha > 0))
+        {
+            _emptyHintShown = true;
+            log("Nothing is drawn after two seconds with scripts on: this scene's scripts wait for the game host. Turn 'Scripts on' off to see the authored layout.");
+        }
         refreshFrame();
     }
 
@@ -560,6 +719,7 @@ internal sealed class MainWindow : Form
     {
         var movie = requireMovie();
         if (movie.Playing) { pause(); return; }
+        if (movie.ActiveClip is { } clip && (movie.Frame < clip.Start || movie.Frame > clip.End)) movie.SetClip(clip);
         movie.Play();
         _frameDebt = 0; _playClock.Restart(); _clock.Start();
         _playButton.Text = "⏸ Pause";

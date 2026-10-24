@@ -95,7 +95,7 @@ internal sealed class ExplorerPanel : UserControl
     private void decorate(TreeNode node, ArchiveId id, HashSet<ArchiveId>? pendingArchives = null)
     {
         var pending = pendingArchives?.Contains(id) ?? _studio!.Pending.Archives.Contains(id);
-        var modified = _studio.Store.IsModified(id);
+        var modified = _studio!.Store.IsModified(id);
         var name = node.Text.TrimStart('✱', '●', ' ');
         var text = (pending ? "✱ " : modified ? "● " : "") + name;
         var color = pending ? Theme.Pending : modified ? Theme.Modified : Theme.Foreground;
