@@ -3,6 +3,8 @@ using Waddamburo.Formats.Ddp;
 using Waddamburo.Formats.Lmb;
 using Waddamburo.Formats.Nut;
 
+if (args[0] == "payloadonly") { PayloadOnly.Run(args[1], args[2]); return; }
+if (args[0] == "scripts") { Scripts.Run(args[1], args[2]); return; }
 if (args[0] == "ndpmulti") { NdpMulti.Run(args[1]); return; }
 if (args[0] == "packtest") { PackTest.Run(args[1]); return; }
 if (args[0] == "nutv2") { NutV2.Run(args[1]); return; }

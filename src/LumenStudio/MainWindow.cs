@@ -153,18 +153,36 @@ internal sealed class MainWindow : Form
                 }
             }
             if (args.Contains("--build-preview") && _studio is not null) log("Preview root: " + WaddamburoLauncher.BuildPreviewRoot(_studio.Project));
+            if (args.Contains("--whole") && _clips.Items.Count > 0) _clips.SelectedIndex = 0;
+            if (args.FirstOrDefault(a => a.StartsWith("--add-stop=", StringComparison.Ordinal)) is { } stopAt && _movie is not null)
+            {
+                var movie = _movie; var stopFrame = int.Parse(stopAt[11..], CultureInfo.InvariantCulture);
+                var index = -1;
+                movie.Edit(d => index = d.AddAction(movie.ViewRoot, stopFrame, [0x07, 0x00]));
+                log($"Added script {index} (stop) at frame {stopFrame} of {movie.SpriteName(movie.ViewRoot)}.");
+            }
+            if (args.FirstOrDefault(a => a.StartsWith("--script=", StringComparison.Ordinal)) is { } scriptSpec && _movie is not null)
+            {
+                // --script=INDEX:ASSEMBLY, lines separated by ';' (the Script Editor's assembly syntax).
+                var colon = scriptSpec.IndexOf(':');
+                var actionIndex = int.Parse(scriptSpec[9..colon], CultureInfo.InvariantCulture);
+                var bytes = Avm1Assembly.Assemble(scriptSpec[(colon + 1)..].Replace(';', '\n'));
+                _movie.Edit(d => d.SetActionBytecode(actionIndex, bytes));
+                log($"Script {actionIndex} replaced: {ScriptSummary.OneLine(_movie.Document.Definition.Actions[actionIndex], _movie.Document.Definition.Strings)}");
+            }
             if (args.FirstOrDefault(a => a.StartsWith("--tween=", StringComparison.Ordinal)) is { } tweenSpec && _movie is not null)
             {
                 var p = tweenSpec[8..].Split(',').Select(v => float.Parse(v, CultureInfo.InvariantCulture)).ToArray();
                 var movie = _movie; var end = (int)p[1];
-                var available = movie.Document.Placements(movie.ViewRoot, 0);
+                var start = Enumerable.Range(0, movie.FrameCount).First(f => movie.Document.Placements(movie.ViewRoot, f).Length > 0);
+                var available = movie.Document.Placements(movie.ViewRoot, start);
                 var place = p[0] < 0 ? available.First() : available.FirstOrDefault(x => x.Depth == (ushort)p[0])
                     ?? throw new InvalidOperationException($"No element at depth {p[0]}; frame 0 has depths {string.Join(", ", available.Select(x => x.Depth))}.");
                 var depth = place.Depth;
                 if (end >= movie.FrameCount) movie.Edit(d => d.ExtendTimeline(movie.ViewRoot, end + 1));
                 var m = movie.Document.Matrix(place);
-                movie.Edit(d => d.Tween(movie.ViewRoot, depth, 0, end, m with { X = m.X + p[2], Y = m.Y + p[3], M11 = m.M11 * 0.6f, M22 = m.M22 * 0.6f }, d.Opacity(place), true));
-                log($"Tween on depth {depth}: frames 0–{end}, move {p[2]}, {p[3]}, scale 60%.");
+                movie.Edit(d => d.Tween(movie.ViewRoot, depth, start, end, m with { X = m.X + p[2], Y = m.Y + p[3], M11 = m.M11 * 0.6f, M22 = m.M22 * 0.6f }, d.Opacity(place), true));
+                log($"Tween on depth {depth}: frames {start}–{end}, move {p[2]}, {p[3]}, scale 60%.");
                 refreshMovie();
                 movie.Seek(end / 2); refreshFrame();
             }

@@ -125,7 +125,8 @@ internal static class ScriptSummary
                 case 0x05: line("prevFrame();"); break;
                 case 0x06: line("play();"); break;
                 case 0x07: line("stop();"); break;
-                case 0x81 when instruction.Operand is Avm1FrameOperand frame: line($"gotoAndStop({frame.Frame});"); break;
+                // GotoFrame only jumps; compilers add Stop / Play for gotoAndStop / gotoAndPlay.
+                case 0x81 when instruction.Operand is Avm1FrameOperand frame: line($"gotoFrame({frame.Frame});"); break;
                 case 0x8C when instruction.Operand is Avm1StringIndexOperand label: line($"gotoLabel({quote(str(label.StringIndex))});"); break;
                 case 0x9F when instruction.Operand is Avm1GotoFrame2Operand go: line($"{((go.Flags & 1) != 0 ? "gotoAndPlay" : "gotoAndStop")}({pop()});"); break;
                 case 0x8B when instruction.Operand is Avm1StringIndexOperand target: line($"tellTarget({quote(str(target.StringIndex))}) {{"); break;
