@@ -12,6 +12,7 @@ if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
                                                                Plan (or apply and save) most-recent-wins propagation
         lumenstudio-cli replace <project.lstudio> <archive> <texture> <image.png> [--no-propagate]
         lumenstudio-cli export <project.lstudio> <archive> <texture> <image.png>
+        lumenstudio-cli link <project.lstudio> <name> <source folder> <output packed folder>
         lumenstudio-cli validate <project.lstudio>              Check every overlay archive for hardware invariants
         Archives are paths relative to the packed folder, e.g. song_select/packeddata.ddp.
         """);
@@ -73,6 +74,15 @@ try
             var session = StudioSession.Open(StudioProject.Load(positional[1]));
             var id = new TextureId(new ArchiveId(StudioProject.MainLayer, positional[2]), int.Parse(positional[3], CultureInfo.InvariantCulture));
             File.WriteAllBytes(positional[4], session.TextureImage(id).ToPng());
+            return 0;
+        }
+        case "link":
+        {
+            var project = StudioProject.Load(positional[1]);
+            project.Linked.Add(new LinkedLayer { Name = positional[2], SourcePacked = PackedFolder.Resolve(positional[3]) ?? Path.GetFullPath(positional[3]), OutputPacked = Path.GetFullPath(positional[4]) });
+            project.Validate();
+            project.Save();
+            Console.WriteLine($"Linked layer '{positional[2]}' (movies protected, textures follow clone propagation).");
             return 0;
         }
         case "validate":

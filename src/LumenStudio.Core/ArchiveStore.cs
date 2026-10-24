@@ -29,6 +29,9 @@ public sealed class ArchiveStore(StudioProject project)
     public PackList? PackList(ArchiveId id)
     {
         var file = Path.Combine(Path.GetDirectoryName(SourcePath(id))!, "packlist.txt");
+        if (!File.Exists(file) && id.Layer != StudioProject.MainLayer)
+            // Linked copies often lack packlists; the original archive at the same path names the same textures.
+            file = Path.Combine(Path.GetDirectoryName(Path.Combine(Project.BasePacked, id.Path))!, "packlist.txt");
         return File.Exists(file) ? Core.PackList.Parse(File.ReadAllBytes(file)) : null;
     }
 

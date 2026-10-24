@@ -24,7 +24,8 @@ public static class ClonePropagation
             var edited = family.Where(m => index.IsEdited(m) && !unlinked.Contains(m.Id.Key)).ToArray();
             if (edited.Length == 0) continue;
             var winner = edited
-                .Select(m => (Member: m, Time: journal.TimeOf(m.Id, m.CurrentHash) ?? archiveTime(m.Id.Archive)))
+                // Linked-layer textures that merely match an edit (not written by us) never outrank a real edit by file date.
+                .Select(m => (Member: m, Time: journal.TimeOf(m.Id, m.CurrentHash) ?? (m.Modified ? archiveTime(m.Id.Archive) : DateTime.MinValue)))
                 .OrderByDescending(p => p.Time).ThenBy(p => p.Member.Id.Archive.Layer == StudioProject.MainLayer ? 0 : 1)
                 .ThenBy(p => p.Member.Id.Archive.Path, StringComparer.Ordinal).ThenBy(p => p.Member.Id.Index).First();
             foreach (var member in family)

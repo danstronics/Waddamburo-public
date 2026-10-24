@@ -3,6 +3,7 @@ using Waddamburo.Formats.Ddp;
 using Waddamburo.Formats.Lmb;
 using Waddamburo.Formats.Nut;
 
+if (args[0] == "moviecmp") { MovieCompare.Run(args[1], args[2]); return; }
 if (args[0] == "writer") { WriterTest.Run(args[1]); return; }
 if (args[0] == "pad") { Pad.Run(args[1]); return; }
 if (args[0] == "records") { Records.Run(args[1]); return; }

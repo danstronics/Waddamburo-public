@@ -39,7 +39,7 @@ public sealed record TextureEntry(
 /// </summary>
 public sealed class TextureIndex
 {
-    private const int CacheVersion = 3;
+    private const int CacheVersion = 4;
     private readonly ArchiveStore _store;
     private readonly string? _cachePath;
     private readonly ConcurrentDictionary<ArchiveId, ArchiveScan> _scans = new();

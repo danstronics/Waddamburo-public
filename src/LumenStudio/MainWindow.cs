@@ -126,6 +126,8 @@ internal sealed class MainWindow : Form
                 var d = move[7..].Split(',');
                 moveSelection(float.Parse(d[0], CultureInfo.InvariantCulture), float.Parse(d[1], CultureInfo.InvariantCulture), _wholeTrackButton.Checked);
             }
+            if (args.FirstOrDefault(a => a.StartsWith("--edit-text=", StringComparison.Ordinal)) is { } editText && _movie is not null)
+                demoTextureEdit(editText[12..], args.FirstOrDefault(a => a.StartsWith("--editor-capture=", StringComparison.Ordinal))?[17..]);
             if (args.Contains("--save")) saveAll();
             if (args.FirstOrDefault(a => a.StartsWith("--tab=", StringComparison.Ordinal)) is { } tab)
                 _inspector.SelectedIndex = Math.Clamp(int.Parse(tab[6..], CultureInfo.InvariantCulture), 0, _inspector.TabCount - 1);
@@ -896,6 +898,30 @@ internal sealed class MainWindow : Form
         var original = studio.Index?.Get(id);
         log($"Texture {textureName(id)} → {image.Width}×{image.Height}{(original is not null && (original.Width != image.Width || original.Height != image.Height) ? $" (was {original.Width}×{original.Height})" : "")}" +
             (changed.Count > 1 ? $", also {changed.Count - 1} clone(s) in {changed.Skip(1).Select(c => c.Archive).Distinct().Count()} archive(s)" : "") + ". Save all to write it.");
+    }
+
+    /// <summary>Test hook: edits the selected texture with a text layer and applies it with clone propagation.</summary>
+    private void demoTextureEdit(string text, string? capture)
+    {
+        var studio = requireStudio();
+        var id = requireTexture();
+        var image = studio.TextureImage(id);
+        using var editor = new TextureEditorForm(image, textureName(id), studio.PropagationTargets(id, Propagation.Clones).Count);
+        editor.Show(this);
+        editor.TextLayer?.GetType();
+        editor.PlaceText(text, image.Width / 2f, image.Height / 2f);
+        Application.DoEvents();
+        if (capture is not null)
+        {
+            using var shot = new Bitmap(editor.Width, editor.Height);
+            editor.DrawToBitmap(shot, new Rectangle(0, 0, editor.Width, editor.Height));
+            shot.Save(capture);
+        }
+        editor.Commit();
+        var result = editor.Result;
+        editor.DialogResult = DialogResult.OK;
+        editor.Close();
+        applyTexture(id, result, propagate: true);
     }
 
     private void replaceTexture()

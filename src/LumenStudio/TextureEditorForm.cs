@@ -119,6 +119,20 @@ internal sealed class TextureEditorForm : Form
         updateStatus(null);
     }
 
+    /// <summary>Test hook: places a text layer with the remembered style, as a click with the Text tool would.</summary>
+    internal void PlaceText(string text, float x, float y)
+    {
+        setTool(Tool.Text);
+        mouseDown(new PointF(x, y), new MouseEventArgs(MouseButtons.Left, 1, 0, 0, 0));
+        _text!.Text = text;
+        renderText();
+        _canvas.LayerPosition = new PointF(MathF.Round(x - _layerSource!.Width / 2f), MathF.Round(y - _layerSource.Height / 2f));
+    }
+
+    internal void Commit() => commitLayer();
+
+    internal TextStyle? TextLayer => _text;
+
     public RgbaImage Result => Imaging.FromBitmap(_image);
 
     public bool Propagate => _propagate.Checked;
