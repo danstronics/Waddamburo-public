@@ -200,7 +200,7 @@ public sealed class NutFile
             long levelSize = format switch
             {
                 NutPixelFormat.Bc1 => checked((long)((mipWidth + 3) / 4) * ((mipHeight + 3) / 4) * 8),
-                NutPixelFormat.Bc3 => checked((long)((mipWidth + 3) / 4) * ((mipHeight + 3) / 4) * 16),
+                NutPixelFormat.Bc2 or NutPixelFormat.Bc3 => checked((long)((mipWidth + 3) / 4) * ((mipHeight + 3) / 4) * 16),
                 NutPixelFormat.Argb or NutPixelFormat.ArgbAlternate => checked((long)mipWidth * mipHeight * 4),
                 _ => throw new UnreachableException(),
             };
@@ -303,6 +303,7 @@ public sealed class NutFile
 public enum NutPixelFormat : byte
 {
     Bc1 = 0,
+    Bc2 = 1,
     Bc3 = 2,
     Argb = 14,
     ArgbAlternate = 17,

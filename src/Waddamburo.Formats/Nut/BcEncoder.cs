@@ -22,13 +22,14 @@ public static class BcEncoder
                 for (var i = 0; i < rgba.Length; i += 4)
                 { argb[i] = rgba[i + 3]; argb[i + 1] = rgba[i]; argb[i + 2] = rgba[i + 1]; argb[i + 3] = rgba[i + 2]; }
                 return argb;
-            case NutPixelFormat.Bc1 or NutPixelFormat.Bc3:
+            case NutPixelFormat.Bc1 or NutPixelFormat.Bc2 or NutPixelFormat.Bc3:
                 break;
             default:
                 throw new NotSupportedException($"Unsupported NTP3 format {format}.");
         }
         var bc3 = format == NutPixelFormat.Bc3;
-        var blockBytes = bc3 ? 16 : 8;
+        var bc2 = format == NutPixelFormat.Bc2;
+        var blockBytes = bc3 || bc2 ? 16 : 8;
         var columns = (width + 3) / 4; var rows = (height + 3) / 4;
         var output = new byte[columns * rows * blockBytes];
         var block = new byte[64];
@@ -39,9 +40,9 @@ public static class BcEncoder
             for (var x = 0; x < 4; x++)
                 rgba.Slice((Math.Min(by * 4 + y, height - 1) * width + Math.Min(bx * 4 + x, width - 1)) * 4, 4).CopyTo(block.AsSpan((y * 4 + x) * 4, 4));
             var destination = output.AsSpan((by * columns + bx) * blockBytes, blockBytes);
-            if (bc3)
+            if (bc3 || bc2)
             {
-                AlphaBlock(block, destination[..8]);
+                if (bc3) AlphaBlock(block, destination[..8]); else ExplicitAlphaBlock(block, destination[..8]);
                 ColorBlock(block, destination[8..], punchThrough: false);
             }
             else ColorBlock(block, destination, punchThrough: true);
@@ -210,6 +211,17 @@ public static class BcEncoder
         if (innerMin <= innerMax) errorSix = alphaMode(block, innerMin, innerMax, six);
         else if (min != max) errorSix = alphaMode(block, 0, 255, six);
         (errorSix < errorEight ? six : eight).CopyTo(output);
+    }
+
+    /// <summary>BC2 explicit alpha: sixteen 4-bit values, rounded.</summary>
+    public static void ExplicitAlphaBlock(ReadOnlySpan<byte> block, Span<byte> output)
+    {
+        output[..8].Clear();
+        for (var i = 0; i < 16; i++)
+        {
+            var nibble = (block[i * 4 + 3] * 15 + 127) / 255;
+            output[i / 2] |= (byte)(nibble << (i % 2 * 4));
+        }
     }
 
     /// <summary>a0 &gt; a1 selects eight interpolated values; a0 &lt;= a1 six plus 0 and 255.</summary>

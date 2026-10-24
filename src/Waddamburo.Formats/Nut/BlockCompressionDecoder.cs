@@ -13,6 +13,30 @@ public static class BlockCompressionDecoder
         ParserLimits? limits = null) =>
         decode(blocks, width, height, 8, false, limits ?? ParserLimits.Default);
 
+    /// <summary>BC2 (DXT3): BC3 colour blocks with explicit 4-bit alpha (the game font atlases).</summary>
+    public static byte[] DecodeBc2(
+        ReadOnlySpan<byte> blocks,
+        int width,
+        int height,
+        ParserLimits? limits = null)
+    {
+        var rgba = decode(blocks, width, height, 16, true, limits ?? ParserLimits.Default);
+        var blockWidth = (width + 3) / 4;
+        for (var blockY = 0; blockY < (height + 3) / 4; blockY++)
+            for (var blockX = 0; blockX < blockWidth; blockX++)
+            {
+                var block = blocks.Slice((blockY * blockWidth + blockX) * 16, 8);
+                for (var pixel = 0; pixel < 16; pixel++)
+                {
+                    var x = blockX * 4 + pixel % 4; var y = blockY * 4 + pixel / 4;
+                    if (x >= width || y >= height) continue;
+                    var nibble = (block[pixel / 2] >> (pixel % 2 * 4)) & 0xF;
+                    rgba[(y * width + x) * 4 + 3] = (byte)(nibble * 17);
+                }
+            }
+        return rgba;
+    }
+
     public static byte[] DecodeBc3(
         ReadOnlySpan<byte> blocks,
         int width,

@@ -16,6 +16,11 @@ public static class NutTextureDecoder
                 texture.Width,
                 texture.Height,
                 parserLimits),
+            NutPixelFormat.Bc2 => BlockCompressionDecoder.DecodeBc2(
+                texture.Data.Span,
+                texture.Width,
+                texture.Height,
+                parserLimits),
             NutPixelFormat.Bc3 => BlockCompressionDecoder.DecodeBc3(
                 texture.Data.Span,
                 texture.Width,

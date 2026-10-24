@@ -60,7 +60,7 @@ public static class NutTextureWriter
         long raw = format switch
         {
             NutPixelFormat.Bc1 => (long)((width + 3) / 4) * ((height + 3) / 4) * 8,
-            NutPixelFormat.Bc3 => (long)((width + 3) / 4) * ((height + 3) / 4) * 16,
+            NutPixelFormat.Bc2 or NutPixelFormat.Bc3 => (long)((width + 3) / 4) * ((height + 3) / 4) * 16,
             _ => (long)width * height * 4,
         };
         return 0x10 + headerSize + ((raw + 15) & ~15);
