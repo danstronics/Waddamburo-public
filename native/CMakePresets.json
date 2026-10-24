@@ -1,0 +1,247 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "BUILD_TESTING": true,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+      }
+    },
+    {
+      "name": "linux-base",
+      "hidden": true,
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "binaryDir": "${sourceDir}/../out/build/native/linux-x64/${presetName}"
+    },
+    {
+      "name": "windows-base",
+      "hidden": true,
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "binaryDir": "${sourceDir}/../out/build/native/win-x64/${presetName}"
+    },
+    {
+      "name": "linux-debug",
+      "displayName": "Linux x64 Debug",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Linux x64 Release",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "linux-sanitize",
+      "displayName": "Linux x64 Address/undefined behavior sanitizers",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Sanitize"
+      }
+    },
+    {
+      "name": "linux-audio",
+      "displayName": "Linux x64 Debug with system FFmpeg",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "WADDAMBURO_MEDIA_FFMPEG": true
+      }
+    },
+    {
+      "name": "linux-audio-pinned",
+      "displayName": "Linux x64 Release with pinned FFmpeg",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_MEDIA_FFMPEG": true,
+        "WADDAMBURO_FFMPEG_ROOT": "${sourceDir}/../out/build/native/linux-x64/linux-ffmpeg/ffmpeg/prefix"
+      }
+    },
+    {
+      "name": "linux-ffmpeg",
+      "displayName": "Linux x64 pinned FFmpeg dependency",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "BUILD_TESTING": false,
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_BUILD_FFMPEG": true
+      }
+    },
+    {
+      "name": "linux-audio-complete",
+      "displayName": "Linux x64 pinned FFmpeg and vgmstream (no G.719)",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_MEDIA_FFMPEG": true,
+        "WADDAMBURO_FFMPEG_ROOT": "${sourceDir}/../out/build/native/linux-x64/linux-ffmpeg/ffmpeg/prefix",
+        "WADDAMBURO_MEDIA_VGMSTREAM": true
+      }
+    },
+    {
+      "name": "linux-package",
+      "displayName": "Linux x64 self-contained release libraries",
+      "inherits": "linux-base",
+      "cacheVariables": {
+        "BUILD_TESTING": false,
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_PACKAGE": true
+      }
+    },
+    {
+      "name": "windows-package",
+      "displayName": "Windows x64 self-contained release libraries (mingw-w64: cross build on Linux, or an MSYS2 MINGW64 shell)",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/../out/build/native/win-x64/${presetName}",
+      "toolchainFile": "${sourceDir}/cmake/mingw-w64.cmake",
+      "cacheVariables": {
+        "BUILD_TESTING": false,
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_PACKAGE": true
+      }
+    },
+    {
+      "name": "windows-debug",
+      "displayName": "Windows x64 Debug",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "windows-release",
+      "displayName": "Windows x64 Release",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "windows-sanitize",
+      "displayName": "Windows x64 address sanitizer diagnostics",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Sanitize"
+      }
+    },
+    {
+      "name": "windows-ffmpeg",
+      "displayName": "Windows x64 pinned FFmpeg dependency",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "BUILD_TESTING": false,
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_BUILD_FFMPEG": true
+      }
+    },
+    {
+      "name": "windows-audio-pinned",
+      "displayName": "Windows x64 Release with pinned FFmpeg",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "WADDAMBURO_MEDIA_FFMPEG": true,
+        "WADDAMBURO_FFMPEG_ROOT": "${sourceDir}/../out/build/native/win-x64/windows-ffmpeg/ffmpeg/prefix"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "linux-debug", "configurePreset": "linux-debug" },
+    { "name": "linux-release", "configurePreset": "linux-release" },
+    { "name": "linux-sanitize", "configurePreset": "linux-sanitize" },
+    { "name": "linux-audio", "configurePreset": "linux-audio" },
+    { "name": "linux-audio-pinned", "configurePreset": "linux-audio-pinned" },
+    {
+      "name": "linux-ffmpeg",
+      "configurePreset": "linux-ffmpeg",
+      "targets": ["waddamburo_ffmpeg_audit"]
+    },
+    { "name": "linux-audio-complete", "configurePreset": "linux-audio-complete" },
+    { "name": "linux-package", "configurePreset": "linux-package" },
+    { "name": "windows-package", "configurePreset": "windows-package" },
+    { "name": "windows-debug", "configurePreset": "windows-debug" },
+    { "name": "windows-release", "configurePreset": "windows-release" },
+    { "name": "windows-sanitize", "configurePreset": "windows-sanitize" },
+    {
+      "name": "windows-ffmpeg",
+      "configurePreset": "windows-ffmpeg",
+      "targets": ["waddamburo_ffmpeg_audit"]
+    },
+    { "name": "windows-audio-pinned", "configurePreset": "windows-audio-pinned" }
+  ],
+  "testPresets": [
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-debug",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "linux-sanitize",
+      "configurePreset": "linux-sanitize",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "linux-audio",
+      "configurePreset": "linux-audio",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "linux-audio-pinned",
+      "configurePreset": "linux-audio-pinned",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "linux-audio-complete",
+      "configurePreset": "linux-audio-complete",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "windows-debug",
+      "configurePreset": "windows-debug",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "windows-sanitize",
+      "configurePreset": "windows-sanitize",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "windows-audio-pinned",
+      "configurePreset": "windows-audio-pinned",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

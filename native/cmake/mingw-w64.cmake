@@ -1,0 +1,16 @@
+# Builds the Windows x64 release libraries with mingw-w64: cross from Linux, or natively in MSYS2.
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_SYSTEM_PROCESSOR x86_64)
+if(CMAKE_HOST_WIN32)
+  # An MSYS2 MINGW64 shell on Windows: the same toolchain, unprefixed.
+  set(WADDAMBURO_CROSS_PREFIX "")
+else()
+  set(WADDAMBURO_CROSS_PREFIX x86_64-w64-mingw32-)
+endif()
+set(CMAKE_C_COMPILER ${WADDAMBURO_CROSS_PREFIX}gcc)
+set(CMAKE_CXX_COMPILER ${WADDAMBURO_CROSS_PREFIX}g++)
+set(CMAKE_RC_COMPILER ${WADDAMBURO_CROSS_PREFIX}windres)
+set(CMAKE_FIND_ROOT_PATH /usr/x86_64-w64-mingw32/sys-root/mingw)
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)

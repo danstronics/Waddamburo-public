@@ -1,0 +1,296 @@
+# Lumen display-list slice
+
+`Waddamburo.Lumen.Runtime.LumenPlayer` is the first renderer-independent runtime
+slice. It consumes the immutable semantic LMB definition, resolves the candidate
+root sprite (or an explicit caller override), compiles ordinary timeline records
+into frame groups, and owns mutable display instances privately.
+
+The implemented transaction is intentionally small:
+
+- initialization enters ordinary frame zero;
+- place, move, replace, and remove commands mutate depth-ordered children;
+- frame actions are queued during timeline mutation and drained parent before child;
+- authored `onEnterFrame` handlers then run child before parent, followed by a
+  second action drain;
+- matrix and translation pool entries compose through nested instances;
+- multiply/add color transforms compose through the hierarchy; and
+- a render call creates a new immutable logical-stage snapshot without exposing or
+  mutating display state.
+
+`Advance` captures the set of existing sprite instances before stepping them, so a
+child created during a tick does not advance twice. Ordinary timelines loop to
+frame zero. This initial loop rebuilds timeline children; identity-preserving loop
+reuse belongs to the fuller scheduler implementation.
+
+`Seek` is a separate cut transaction. It restores the nearest F105 display-list
+snapshot at or before the requested root frame, recursively derives placed child
+timeline ages from their original first-frame values, and replays only the remaining
+ordinary frames. If no snapshot exists it replays from frame zero. A completed seek
+sets previous state equal to current state so presentation interpolation cannot smear
+across the jump. Out-of-range root frames are rejected.
+
+Root labels are compiled into an ordinal immutable lookup. `GotoFrame` and
+`GotoLabel` combine the same cut transaction with an explicit resulting playback
+state; `Stop` prevents authored advancement while snapshots continue rendering,
+and `Play` resumes on the next simulation tick. Seeking while stopped still rebuilds
+the requested state. Skipped frames apply their display-list mutations without
+running their actions; only actions on the final visible frame are queued. The
+requested playback state is established before that queue drains, so an authored
+target-frame `Play` or `Stop` takes precedence.
+
+The bounded interpreter executes the primitive stack, conversion, arithmetic,
+comparison, bitwise, branch, variable/member, local, array/object, call, function,
+inheritance, return, and playback opcodes needed by the Entry initialization path.
+`DefineFunction` and `DefineFunction2` create inert function values with validated
+out-of-line bodies. Invocations seed bounded registers from parameters and observed
+preload flags; recursive calls are depth-limited. The entire code block is
+preflighted, and playback/member changes are committed only after successful
+termination, so unsupported opcodes and stack underflow defer the whole record
+without partial writes.
+
+Authored function returns propagate through nested calls rather than collapsing to
+`undefined`. Primitive strings expose `length`, `charAt`, and `toString`.
+`new Array(length)` creates a bounded indexed array with the requested length;
+numeric writes extend it and assigning `length` resizes it within runtime limits.
+These small built-ins are
+implemented in the AVM boundary rather than in a game host.
+
+`Advance(LumenInputSnapshot)` installs an immutable set of Flash key codes for one
+simulation tick. The built-in `Key.isDown` reads only that player's current
+snapshot, and the parameterless `Advance()` supplies an empty snapshot so input
+cannot remain accidentally latched. Strings also expose `charCodeAt`, allowing
+authored polling code to derive the numeric codes it queries. SDL event mapping and
+game-level player controls remain outside the renderer-independent runtime.
+
+`LumenRuntimeLimits` supplies positive per-player ceilings for instructions per
+action, operand-stack values, queued frame actions, registers, and call depth.
+Instruction/stack/register exhaustion emits `LUM_ACTION_LIMIT`; excess queued work
+emits `LUM_ACTION_QUEUE_LIMIT`, and recursive calls stop at `LUM_AVM_CALL_LIMIT`.
+Defaults are 10,000 instructions, 4,096 stack values, 4,096 pending actions, 256
+registers, and 64 nested calls. The pending-action ceiling also bounds the number
+of enter-frame candidates collected during one dispatch. Actions queued by an
+authored timeline jump drain in subsequent bounded batches during the same phase.
+Tick-wide instruction budgets remain outside this slice.
+
+Each action also receives bounded registers and a transactional variable/member
+context. Named child clips, `this`, `_root`, `_parent`, and `_global` resolve without
+exposing mutable display instances publicly. `_visible`, `_x`, `_y`, `_alpha`, and
+`_currentframe` bridge to private clip state. Writes commit only when the action
+finishes successfully, while later instructions and nested calls can read pending
+instance/global member writes through the same transaction. Unregistered function calls consume the authored arguments,
+return `undefined`, and emit `LUM_AVM_CALL_UNRESOLVED`, allowing optional host calls
+to remain observable without aborting otherwise valid initialization.
+
+The candidate DefineSprite header-word-2 linkage index connects exported sprites to
+`Object.registerClass`. Registration is a commit-time effect: it binds both existing
+and subsequently placed instances, installs the class prototype, and invokes the
+constructor with preloaded `this`. `MovieClip.play` and `stop` bridge to timeline
+state. `MovieClip.gotoAndPlay` and `gotoAndStop` resolve one-based frame numbers or
+authored labels on the target clip. Forward jumps preserve existing children while
+applying intervening display-list frames without their scripts, then run only the
+destination frame's actions and newly placed children's initialization actions; backward jumps use
+the current cut reconstruction. Both reset interpolation, and invalid targets emit
+`LUM_AVM_GOTO_INVALID`. Other missing host methods remain explicit `LUM_AVM_METHOD_UNRESOLVED`
+diagnostics with their action offset. A zero placement-name field retains an
+instance's existing authored name instead of clearing it during timeline updates.
+Synthetic fixtures cover class bootstrap and binding without embedding
+or reproducing original content.
+
+Game integration enters through `ILumenHostBinding`, which installs globals before
+the movie enters frame zero. A binding can register named functions and objects with
+named methods; callbacks receive an immutable primitive argument array and return a
+bounded primitive `LumenHostValue`. Registries are private to one player, so scene
+layers cannot leak native state into each other. Host exceptions become deduplicated
+`LUM_HOST_CALL_FAILED` diagnostics and return `undefined`. Object references do not
+cross this first public boundary yet, and host side effects are synchronous rather
+than transactionally reversible. `LumenMovieContent.CreatePlayer` accepts the same
+optional binding without coupling the content loader to a concrete game host.
+
+Authored `NewObject` now resolves AVM function constructors, attaches their
+prototype, preloads `this`, and runs the constructor inside the calling action's
+transaction. The built-in `flash.external.ExternalInterface` captures committed
+`addCallback` registrations per player. `CallbackNames` is an immutable sorted
+snapshot, and `TryInvokeCallback` synchronously invokes a named callback with the
+same primitive-only host values. Callback return values and object arguments remain
+outside this slice. Host bindings can also register the synchronous primitive-only
+movie-to-host endpoint for `ExternalInterface.call`; without one, the optional call
+returns `undefined`. The standalone viewer installs a `Lumen` presence object
+through its host binding so movies select their native-game branch. Its
+deterministic `IsReady`, `InitInfo`, and `IsStartLumen` methods allow Entry's
+initialization handler to complete without pretending to supply broader game state.
+The standalone viewer accepts an authored entry request because it has no cabinet
+credit service, retains paid-play reporting, and acknowledges voice-stop requests; other
+unimplemented native methods remain diagnostics rather than hidden stubs. It traces
+authored `ExternalInterface.call` traffic and scene-change requests without owning
+game-flow policy.
+
+The product `Waddamburo.Game` layer now owns that policy boundary. Its reusable
+front-end binding supplies the measured `Lumen` methods and converts
+`SetNextScene` into a validated three-integer `LumenSceneRequest`; it contains no
+movie-name, frame, label, or Entry-specific branch. `GameFlowSession` then keeps
+loading, active, transition-pending, failure, restart, and stop ownership explicit.
+Authored numeric requests deliberately remain unresolved until the composition
+root maps them to a stable `SceneId`, and the old scene remains current until the
+resolved target has loaded and is explicitly activated. A separate synthetic game
+test project locks this lifecycle down without using original content.
+
+Scene composition now has a versioned `SceneDefinition` with ordered archive/movie
+IDs, transforms, host IDs, and optional anchors. `SceneCatalog` owns explicit
+source/request/target routes, while `GameFlowCoordinator` asks an injected loader
+for a fresh scene instance and swaps it only after loading succeeds. The previous
+instance is then disposed. Cancellation keeps the previous scene active; missing
+routes and load failures become explicit failed flow states. This orchestration is
+independent of filesystem layout, SDL, GPU resources, and particular movie names.
+
+`DirectoryLumenMovieContentSource` is the first concrete user-asset source. It
+requires an absolute configured root, rejects absolute or escaping archive IDs,
+honours cancellation while reading, and applies the normal parser limits. The
+`LumenGameSceneLoader` builds fresh isolated players and host bindings for every
+ordered layer, preserves a scene-local texture namespace, and exposes immutable
+CPU textures for the platform adapter. The diagnostic app's
+`--entry-song-select --asset-root=...` composition uses those generic pieces to
+exercise the measured Entry request against user-supplied archives; its relative
+movie IDs and route live in the app composition, not in Lumen runtime behavior.
+
+Standard AVM1 `CloneSprite` and `RemoveSprite` participate in the same action
+transaction as variable and member writes. A clone copies the source display state,
+script variables, prototype/class binding, and child hierarchy into its authored
+dynamic depth; replacement and removal become visible only when the action commits.
+Timeline placements occupy Flash's negative internal depth band while script-created
+clips occupy their signed ActionScript depths, so equal numeric values cannot replace
+one another. `getDepth`, `getNextHighestDepth`, and `swapDepths` operate on that
+separation. Synthetic fixtures exercise clone-followed-by-remove and a timeline/dynamic
+depth collision without relying on game assets.
+
+Script-created clips are also visible through a transaction-local display overlay.
+Consequently, repeated `getNextHighestDepth` and `attachMovie` or
+`createEmptyMovieClip` calls in one action reserve distinct depths while failed
+actions still discard their display mutations. `removeMovieClip` masks a pending
+child immediately and commits the removal with the surrounding action.
+
+AVM1 functions retain their defining lexical scope and timeline target. Calls use
+an activation scope for parameters and implicit Function/Function2 locals, including
+the authored preload and suppression flags. Array index assignment grows an array
+only when the index lies beyond its current end; overwriting lower indexes preserves
+higher slots. Synthetic regressions cover exported closure callbacks, dynamic clip
+creation/removal, and reverse-order writes to populated arrays.
+
+The callback inspection surface also exposes immutable callback names and authored
+parameter names. The standalone app uses that metadata for an interactive debug
+console and pairs keyboard `1`–`9` with the first nine root labels. Terminal
+commands can list callbacks/labels, switch a state, or invoke a callback with typed
+primitive arguments while the movie keeps running. This debugger belongs to the
+app composition layer and does not add console or keyboard dependencies to Lumen.
+Bounded viewer runs can overlay one-tick physical-key pulses on exact simulation
+ticks, making input-driven framebuffer probes repeatable without SDL event injection.
+
+The Formats layer supplies immutable prevalidated code blocks rather than asking
+the runtime to rediscover byte boundaries. It validates short and long action
+records, branch destinations, and the out-of-line lexical bodies used by Lumen's
+`DefineFunction`, `DefineFunction2`, and `With` records under instruction-count and
+nesting limits. Observed control, register, string, function, URL, and heterogeneous
+`Push` operands are immutable typed values; F001 references are validated before
+runtime use while raw payload bytes remain available for losslessness. The simple
+executor consumes this model directly.
+
+Each display instance also retains its previous transform and multiply color. A
+snapshot accepts the display accumulator's fractional tick and interpolates those
+values without exposing mutable timeline state to the renderer. Translation changes
+greater than 200 logical pixels and multiply-color component changes greater than
+0.3 are explicit cuts; new and replaced instances render their current state. Add
+color remains at its current authored value.
+
+Flash blend mode 8 is retained as renderer-neutral additive intent through nested
+clips and scene composition. Other non-normal blend modes, unsupported AVM actions,
+and native fill-zero surfaces are retained but not guessed. The player emits
+stable, deduplicated diagnostics for those deferred paths. Synthetic tests cover root resolution,
+place/move/remove/loop behavior, nested matrix order, color conversion, F105 and
+replay-based seeks, immutable snapshots, interpolation and cut behavior, simple
+play/stop actions, transactional variables and clip members, function/class
+bootstrap, exported-sprite constructor binding, nested function returns, primitive
+string access, clip-local jumps, same-tick enter-frame dispatch, and explicit
+deferred-action diagnostics.
+
+Timeline rewinds and loops preserve dynamic children and reuse surviving authored
+placements by depth, character, and placement identity. Per-instance script state
+therefore survives a loop when Flash would retain the clip. Once ActionScript writes
+a numeric display property (`_x`, `_y`, scale, rotation, or alpha), that instance
+owns its transform and later timeline placement updates no longer overwrite it.
+Character replacement retains the authored instance name so host-owned native-fill
+surfaces remain addressable across swaps.
+
+`Waddamburo.Game.LumenMovieContent` is the source-independent composition layer for
+the vertical slice. It receives a validated DDP movie view, requires the observed
+one-texture-per-NTP3-entry profile, decodes bounded RGBA base mips, reads semantic
+LMB data with the matching local texture count, and creates a player. Filesystem
+selection stays in the app; native upload stays in the SDL adapter.
+
+`LumenScenePlayer` composes independent child players into one logical stage. Scene
+layers retain file order, apply a top-level scale/translation, and map each child's
+local texture indices into a disjoint scene texture namespace. Advancing a scene
+ticks each child exactly once. The SDL host calls that transaction from its fixed
+60 Hz simulation accumulator and builds a fresh immutable snapshot for every
+presentation frame. The app's scene reader resolves only relative archive
+paths beneath the selected asset root and caps a scene at 256 layers.
+
+Scene composition is static at the host layer. Within a movie, bounded exported
+symbols can be created by `attachMovie` and AVM clone/remove operations; external
+movie loading through `MovieClipLoader` remains deferred until the resolver and
+resource-lifetime contracts exist.
+
+## Timeline clipping masks
+
+Placement word 5 contains the placement depth in its high half and an inclusive
+clipping end depth in its low half. A nonzero end depth marks mask artwork, which
+clips following siblings through that depth and is never drawn as color. This
+asset-derived interpretation is validated by synthetic placement/seek tests and a
+local animated-effect render. Zero on a move leaves the existing range unchanged.
+
+Render snapshots carry explicit stencil push/draw/pop operations and reference
+depths. Scene composition preserves these operations while transforming vertices
+and remapping textures. SDL uses a resize-aware depth/stencil target, clearing it
+on each frame; masks write stencil with color writes disabled. Texture alpha below
+0.5 is rejected, a project binary-mask policy. Overlapping pieces of one mask form
+a union; nested masks intersect. Each sibling's masks are scoped independently,
+including crossing authored depth ranges, so masking cannot leak into later scene
+layers. SPIR-V and DXIL mask shaders are built from project-authored source.
+
+This supports timeline masks with textured quad artwork, including animated mask
+sprites. A mask whose artwork itself contains clipped content is diagnosed and
+hides its range. Soft alpha masks, script-driven setMask, and arbitrary non-quad
+geometry remain outside this slice. Synthetic GPU pixel checks cover transparent
+mask texels, overlapping mask pieces, nested intersection, and restoration after
+pop; local captures remain private.
+
+## Host instance paths and text overlays
+
+Host clip selectors with a leading slash, such as `/main/panel/title`, resolve
+only from the movie root. A missing child returns no match without scanning the
+whole display list. Selectors without the slash retain the existing root-first,
+then ancestor-suffix matching behaviour. Both positive and missing results are
+invalidated when the display list changes, including clones, removals and seeks.
+
+`SetInstanceOverlay` still matches a clip and its nearest ancestors by suffix;
+its leading/repeated slashes are ignored. Overlay paths are split once when
+registered and reused when only the surface, box or replace flag changes. Matching
+keeps dictionary order and tests the leaf name before walking ancestors. Snapshots
+retain their own immutable output after an overlay is updated or removed.
+
+## Immutable AVM execution plans
+
+The interpreter validates supported instructions and indexes action offsets once
+per immutable `Avm1CodeBlock`, using a weak-key cache. Replacing a code block,
+even at the same offsets, produces a fresh plan; released movie code does not
+stay alive solely because of the cache. Only support metadata and instruction
+lookup are shared. Registers, stack, instruction budgets, context and playback
+transactions remain local to each invocation, including failed executions.
+
+## Host hooks and script transactions
+
+`TryWrapScriptMethod` exchanges primitive return values with the host.
+`TryAfterScriptMethod` runs a host action after the authored method while preserving
+its complete return value, including array/object identity. Use the latter when a
+caller keeps the returned input array. Host writes through `TryWriteScriptValue`
+join the active AVM transaction: subsequent script reads see them and native staged
+writes do not overwrite them at commit. Calls made outside AVM execution retain
+the immediate-write behavior.

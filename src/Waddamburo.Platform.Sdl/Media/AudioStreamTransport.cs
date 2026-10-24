@@ -1,0 +1,68 @@
+namespace Waddamburo.Platform.Sdl.Media;
+
+/// <summary>Retains position and failure information after the mixer releases a stream.</summary>
+public sealed class AudioStreamTransport : IAudioStreamSource
+{
+    private readonly ScheduledAudioSource _source;
+    private readonly Func<ulong> _submittedFrames;
+    private long _firstOutputFrame = -1;
+    private long _lastPosition;
+    private readonly AudioPlaybackClock _clock = new();
+    private readonly System.Diagnostics.Stopwatch _elapsed = System.Diagnostics.Stopwatch.StartNew();
+    private bool _paused;
+    private ulong _pausedAt;
+
+    internal AudioStreamTransport(ScheduledAudioSource source, Func<ulong> submittedFrames)
+    {
+        _source = source;
+        _submittedFrames = submittedFrames;
+    }
+
+    public AudioPlaybackHandle Handle { get; internal set; }
+    public SdlAudioFormat Format => _source.Format;
+    public bool IsCompleted => _source.IsCompleted;
+    public Exception? Failure => _source.Failure;
+
+    public int Read(Span<float> interleavedDestination)
+    {
+        if (_firstOutputFrame < 0)
+            _firstOutputFrame = checked((long)_submittedFrames());
+        return _source.Read(interleavedDestination);
+    }
+
+    internal TimeSpan Position(ulong submitted, ulong queued, TimeSpan hardwareLatency)
+    {
+        if (_paused)
+            return TimeSpan.FromSeconds((double)_lastPosition / Format.SampleRate);
+        if (_firstOutputFrame < 0)
+            return TimeSpan.Zero;
+        var consumed = checked((long)submitted) - checked((long)queued) - _firstOutputFrame;
+        var position = _clock.Update(TimeSpan.FromSeconds((double)consumed / Format.SampleRate),
+            hardwareLatency, _elapsed.Elapsed);
+        var played = checked((long)Math.Floor(position.TotalSeconds * Format.SampleRate));
+        _lastPosition = Math.Max(_lastPosition, Math.Clamp(played, 0, _source.ProducedFrames));
+        return TimeSpan.FromSeconds((double)_lastPosition / Format.SampleRate);
+    }
+
+    // ponytail: the song frames already queued when pausing still play out (~10 ms at the default
+    // buffer) and are skipped on resume; hold them back in the device if that ever matters.
+    internal void SetPaused(bool paused, ulong submitted)
+    {
+        if (_paused == paused) return;
+        _paused = paused;
+        if (paused)
+        {
+            _pausedAt = submitted;
+            _elapsed.Stop();
+        }
+        else
+        {
+            // Frames submitted while paused held no song: start the song that much later.
+            if (_firstOutputFrame >= 0)
+                _firstOutputFrame += checked((long)(submitted - _pausedAt));
+            _elapsed.Start();
+        }
+    }
+
+    public void Dispose() => _source.Dispose();
+}
