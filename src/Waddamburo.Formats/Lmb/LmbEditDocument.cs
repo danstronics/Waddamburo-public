@@ -91,6 +91,101 @@ public sealed class LmbEditDocument
         return index;
     }
 
+    /// <summary>
+    /// Updates the F007 entry (<c>textureIndex, name, width, height</c>) for a movie-local texture after
+    /// its NUT was resized. The record keeps its size, so the LMB layout is preserved.
+    /// </summary>
+    public bool SetTextureSize(int textureIndex, int width, int height)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(textureIndex);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        var found = false;
+        edit(records =>
+        {
+            foreach (var pool in records.Where(r => r.Tag == LmbTags.TextureBoundsPool))
+            {
+                var count = checked((int)get(pool.Payload, 0));
+                for (var entry = 0; entry < count; entry++)
+                {
+                    var word = 1 + entry * 4;
+                    if (get(pool.Payload, word) != (uint)textureIndex) continue;
+                    put(pool.Payload, word + 2, f(width)); put(pool.Payload, word + 3, f(height));
+                    found = true;
+                }
+            }
+        }, null);
+        return found;
+    }
+
+    /// <summary>Width and height recorded in F007 for a movie-local texture, when present.</summary>
+    public (float Width, float Height)? TextureSize(int textureIndex)
+    {
+        foreach (var entry in Definition.TextureBounds)
+            if (BitConverter.SingleToUInt32Bits(entry.Left) == (uint)textureIndex) return (entry.Right, entry.Bottom);
+        return null;
+    }
+
+    /// <summary>
+    /// Rewrites one F001 string in place. Every reference to this index (names, labels, text HTML,
+    /// script operands) sees the new value; record sizes may change, requiring a rebuilt export.
+    /// </summary>
+    public void SetString(int stringIndex, string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        if (value.Contains('\0')) throw new ArgumentException("A string cannot contain NUL.", nameof(value));
+        if ((uint)stringIndex >= (uint)Definition.Strings.Length) throw new ArgumentOutOfRangeException(nameof(stringIndex));
+        edit(records =>
+        {
+            var pool = records.Single(r => r.Tag == LmbTags.StringPool);
+            var count = checked((int)get(pool.Payload, 0));
+            var offset = 4;
+            for (var i = 0; i < stringIndex; i++) offset += checked(4 + (((int)get(pool.Payload, offset / 4) + 4) & ~3));
+            var oldStorage = ((int)get(pool.Payload, offset / 4) + 4) & ~3;
+            var text = Encoding.UTF8.GetBytes(value);
+            var newStorage = (text.Length + 4) & ~3;
+            var payload = new byte[checked(pool.Payload.Length - oldStorage + newStorage)];
+            pool.Payload.AsSpan(0, offset).CopyTo(payload);
+            put(payload, offset / 4, (uint)text.Length);
+            text.CopyTo(payload, offset + 4);
+            pool.Payload.AsSpan(offset + 4 + oldStorage).CopyTo(payload.AsSpan(offset + 4 + newStorage));
+            if (count <= stringIndex) throw new InvalidDataException("String pool entry not found.");
+            pool.Payload = payload;
+        }, null);
+    }
+
+    /// <summary>Points a dynamic text field (tag 0x0025) at new initial HTML, without touching shared strings.</summary>
+    public void SetTextHtml(uint textCharacterId, string html)
+    {
+        ArgumentNullException.ThrowIfNull(html);
+        var text = Definition.Texts.SingleOrDefault(t => t.CharacterId == textCharacterId)
+            ?? throw new ArgumentException("Unknown text field.", nameof(textCharacterId));
+        edit(records => put(records[text.RawRecord.Index].Payload, 2, addString(records, html)), null);
+    }
+
+    /// <summary>Everything in the movie that references a string index, for impact previews.</summary>
+    public IReadOnlyList<string> StringUsages(int stringIndex)
+    {
+        var movie = Definition;
+        var result = new List<string>();
+        foreach (var sprite in movie.Sprites)
+        {
+            if (sprite.ExportStringIndex == (uint)stringIndex) result.Add($"export name of sprite {sprite.CharacterId}");
+            foreach (var command in sprite.Timeline)
+            {
+                if (command is LmbFrameLabelCommand label && label.StringIndex == (uint)stringIndex)
+                    result.Add($"label in sprite {sprite.CharacterId} at frame {label.Frame}");
+                else if (command is LmbPlaceObjectCommand place && place.NameStringIndex == (uint)stringIndex)
+                    result.Add($"instance name in sprite {sprite.CharacterId} depth {place.Depth}");
+            }
+        }
+        foreach (var text in movie.Texts)
+            if (text.HtmlStringIndex == (uint)stringIndex) result.Add($"text field {text.CharacterId}");
+        foreach (var action in movie.Actions)
+            if (Avm1Assembly.ReferencesString(action.Code, stringIndex)) result.Add($"script action {action.Index}");
+        return result.Distinct().ToArray();
+    }
+
     /// <summary>Replaces one F005 action, preserving unrelated entries and padding.</summary>
     public void SetActionBytecode(int actionIndex, ReadOnlySpan<byte> bytecode)
     {

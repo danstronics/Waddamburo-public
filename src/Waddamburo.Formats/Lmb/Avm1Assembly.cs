@@ -26,6 +26,27 @@ public static class Avm1Assembly
     };
     private static readonly Dictionary<string, byte> Opcodes = Names.ToDictionary(p => p.Value, p => p.Key, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>String-pool indices an action's operands use, including nested function bodies.</summary>
+    public static IEnumerable<int> StringReferences(Avm1CodeBlock code)
+    {
+        ArgumentNullException.ThrowIfNull(code);
+        foreach (var instruction in code.Instructions)
+        {
+            var references = instruction.Operand switch
+            {
+                Avm1PushOperand push => push.Values.OfType<Avm1PushStringValue>().Select(v => (int)v.StringIndex),
+                Avm1StringIndexOperand value => [value.StringIndex],
+                Avm1FunctionOperand function => new[] { (int)function.NameStringIndex }.Concat(function.Parameters.Select(p => (int)p.NameStringIndex)),
+                _ => Enumerable.Empty<int>(),
+            };
+            foreach (var reference in references) yield return reference;
+            if (instruction.Body is not null)
+                foreach (var nested in StringReferences(instruction.Body)) yield return nested;
+        }
+    }
+
+    public static bool ReferencesString(Avm1CodeBlock code, int stringIndex) => StringReferences(code).Contains(stringIndex);
+
     public static string Disassemble(LmbAction action, IReadOnlyList<LmbString>? strings = null)
     {
         ArgumentNullException.ThrowIfNull(action);
