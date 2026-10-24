@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsAotCompatible>false</IsAotCompatible>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Waddamburo.Formats/Waddamburo.Formats.csproj" />
+  </ItemGroup>
+</Project>
