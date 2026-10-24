@@ -64,7 +64,15 @@ public readonly record struct LumenRenderQuad(
     LumenQuadOrigin? Origin = null);
 
 /// <summary>One display-list level that produced a quad: the instance's character, name, depth and frame.</summary>
-public readonly record struct LumenInstanceRef(uint CharacterId, string Name, long Depth, uint PlacementId, int Frame);
+public readonly record struct LumenInstanceRef(uint CharacterId, string Name, long Depth, uint PlacementId, int Frame,
+    Waddamburo.Lumen.Runtime.LumenMatrix World)
+{
+    /// <summary>Runtime depth of timeline-placed instances (Flash-style, offset by -16384).</summary>
+    public const long TimelineDepthBase = -16384;
+
+    /// <summary>The depth in the parent timeline (LMB), or null for script-created instances.</summary>
+    public ushort? AuthoredDepth => Depth - TimelineDepthBase is >= 0 and <= ushort.MaxValue ? (ushort)(Depth - TimelineDepthBase) : null;
+}
 
 /// <summary>
 /// Editor picking data (recorded only when <c>LumenPlayer.RecordOrigins</c> is set): the instance path

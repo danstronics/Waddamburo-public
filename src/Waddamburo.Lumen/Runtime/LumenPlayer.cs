@@ -187,7 +187,7 @@ public sealed class LumenPlayer
         if (!RecordOrigins) return null;
         var path = new List<LumenInstanceRef>();
         for (var node = instance; node is not null; node = node.Parent)
-            path.Add(new LumenInstanceRef(node.CharacterId, node.Name, node.Depth, node.PlacementId, node.Frame));
+            path.Add(new LumenInstanceRef(node.CharacterId, node.Name, node.Depth, node.PlacementId, node.Frame, node.EditorWorld));
         path.Reverse();
         return new LumenQuadOrigin([.. path], instance.CharacterId, geometry, texture, kind);
     }
@@ -2747,6 +2747,7 @@ public sealed class LumenPlayer
         var local = interpolate(instance, interpolationFraction);
         var transform = local.Transform.Then(parentTransform);
         var color = local.Color.Then(parentColor);
+        if (RecordOrigins) instance.EditorWorld = transform;
         var blend = instance.BlendMode switch
         {
             3 => LumenRenderBlend.Multiply,
@@ -3136,6 +3137,9 @@ public sealed class LumenPlayer
         public LumenLoadedMovie? LoadedMovie { get; set; }
         public long? ClipDepth { get; set; }
         public uint PlacementId { get; set; } = uint.MaxValue;
+
+        /// <summary>World transform from the latest snapshot, recorded for editor picking only.</summary>
+        public LumenMatrix EditorWorld { get; set; } = LumenMatrix.Identity;
 
         public int FirstFrame { get; set; }
 

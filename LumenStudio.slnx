@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LumenStudio/LumenStudio.csproj" />
+    <Project Path="src/LumenStudio.Core/LumenStudio.Core.csproj" />
+    <Project Path="src/LumenStudio.Cli/LumenStudio.Cli.csproj" />
+    <Project Path="src/Waddamburo.Formats/Waddamburo.Formats.csproj" />
+    <Project Path="src/Waddamburo.Lumen/Waddamburo.Lumen.csproj" />
+    <Project Path="src/Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />
+    <Project Path="src/Waddamburo.Upscale/Waddamburo.Upscale.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Waddamburo.Formats.Tests/Waddamburo.Formats.Tests.csproj" />
+    <Project Path="tests/Waddamburo.Lumen.Tests/Waddamburo.Lumen.Tests.csproj" />
+  </Folder>
+</Solution>

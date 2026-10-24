@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <AssemblyName>LumenStudio</AssemblyName>
+    <RootNamespace>LumenStudio</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- WinForms desktop tool, not part of the AOT-compatible game. -->
+    <IsAotCompatible>false</IsAotCompatible>
+    <ApplicationIcon>../../eng/packaging/waddamburo.ico</ApplicationIcon>
+    <NoWarn>$(NoWarn);CA1303;CA1031;CA2000;CA1305;CA1307;CA1309;CA1310;CA1822;CA1859;CA1861;CA1862;CA1865;CA1866;CA1867;WFO5001;WFDEV006</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="LumenStudio.Tests" />
+    <ProjectReference Include="../LumenStudio.Core/LumenStudio.Core.csproj" />
+    <ProjectReference Include="../Waddamburo.Formats/Waddamburo.Formats.csproj" />
+    <ProjectReference Include="../Waddamburo.Lumen/Waddamburo.Lumen.csproj" />
+    <ProjectReference Include="../Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(WaddamburoNativeDir)' != ''">
+    <None Include="$(WaddamburoNativeDir)/waddamburo_*.dll;$(WaddamburoNativeDir)/bgfx*.dll"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+</Project>
