@@ -4,7 +4,7 @@
     <IsAotCompatible>false</IsAotCompatible>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
-    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Waddamburo.Formats/Waddamburo.Formats.csproj" />

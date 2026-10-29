@@ -6,7 +6,7 @@ not alter compiled product behavior.
 
 ## Developer bootstrap
 
-To build and run the game, see [BUILDING.md](../../BUILDING.md): it needs the
+To build and run the game, see [BUILDING.md](https://github.com/LucaSilva-r/Waddamburo-public/blob/master/BUILDING.md): it needs the
 `linux-package` / `windows-package` preset (or its libraries from a release, via
 `eng/fetch-native`), not the debug presets below.
 
@@ -92,7 +92,7 @@ pinned FreeType below statically instead.
 
 `eng/package.sh` builds both releases on a Linux x64 host (it additionally needs
 `make` and the mingw-w64 GCC cross compiler, `x86_64-w64-mingw32-gcc`), or the Windows
-release in an MSYS2 MINGW64 shell on Windows ([BUILDING.md](../../BUILDING.md)):
+release in an MSYS2 MINGW64 shell on Windows ([BUILDING.md](https://github.com/LucaSilva-r/Waddamburo-public/blob/master/BUILDING.md)):
 
 ```sh
 ./eng/package.sh            # both; or: ./eng/package.sh linux|windows

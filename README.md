@@ -1,5 +1,9 @@
 # LumenStudio
 
+> This branch holds only **LumenStudio** and the Waddamburo libraries it is built on. The game itself
+> (Waddamburo) lives on [`master`](https://github.com/LucaSilva-r/Waddamburo-public); no original game
+> data, fonts or other Bandai Namco files are included here.
+
 LumenStudio is a Lumen (LMB) movie editor and texture editor for Gen3 *Taiko no Tatsujin* arcade data
 (Green Ver.). It is built on Waddamburo's open Lumen runtime, parsers and bgfx renderer, and it writes
 files the original PS3-based System 357 executable can load.
@@ -78,3 +82,66 @@ F5 compiles and plays the movie in the editor; F6 runs it in Waddamburo, which g
 documented `Wd` host API. `samples/song-select-poc` is a working Song Select written this way. Reference:
 `docs/lumen-authoring.md`; command line: `lumenstudio-cli lumen-build | lumen-preview | lumen-inspect |
 lumen-render | lumen-script`.
+
+## Building from source
+
+LumenStudio is a Windows Forms app (`net10.0-windows`); the CLI, the authoring library and the tests
+also build on Linux.
+
+1. Install the .NET SDK **10.0.201** exactly (pinned by `global.json`, `rollForward: disable`).
+2. Fetch the native libraries of the latest Waddamburo release (bgfx, FreeType, FFmpeg and the texture
+   codec), which the stage view loads:
+
+   ```powershell
+   ./eng/fetch-native.ps1        # Windows (Linux: ./eng/fetch-native.sh)
+   ```
+
+   To build them yourself instead, see [native builds](docs/development/native-builds.md)
+   (`native/` holds the CMake sources and presets).
+3. Build, test and run:
+
+   ```sh
+   dotnet restore LumenStudio.slnx --locked-mode
+   dotnet build LumenStudio.slnx -c Release --no-restore
+   dotnet test LumenStudio.slnx -c Release --no-build
+   dotnet run --project src/LumenStudio -c Release
+   dotnet run --project src/LumenStudio.Cli -c Release -- validate <overlay>
+   ```
+
+   Two authoring tests also round-trip your original Song Select when `LUMENSTUDIO_SONG_SELECT_DDP` points
+   to its `data/lumendata/packed/song_select/packeddata.ddp`; without it they are skipped silently.
+
+**F5 / Ctrl+F5 / F6** start Waddamburo. LumenStudio looks for `waddamburo\Waddamburo.exe` next to
+`LumenStudio.exe`, or for the executable chosen in *File › Project settings › Waddamburo executable*.
+Running authored movies with the `Wd` host API needs a Waddamburo build that includes the authored-movie
+binding described in [Lumen authoring](docs/lumen-authoring.md).
+
+## Repository layout
+
+| Path | Contents |
+| --- | --- |
+| `src/LumenStudio` | The desktop editor: stage, timeline, inspector, texture editor, scripts, clone sync, Waddamburo launcher. |
+| `src/LumenStudio.Core` | Projects and sessions, texture clone index and propagation, archive rebuilding (no UI). |
+| `src/LumenStudio.Authoring` | Lumen Author: JSON movie projects, LumenScript compiler, LMB/NUT/DDP builders, preview host. |
+| `src/LumenStudio.Cli` | `lumenstudio-cli` for batch and authoring commands. |
+| `src/Waddamburo.Formats` | DDP / NDP / LMB / NUT readers and writers, AVM1 assembly. |
+| `src/Waddamburo.Lumen` | The Lumen runtime: AVM1 interpreter, movie/scene player and render snapshots. |
+| `src/Waddamburo.Platform.Sdl` | SDL3 + bgfx renderer and text rasterizers used by the stage view. |
+| `src/Waddamburo.Upscale` | PNG reading/writing and the 2× texture upscaler. |
+| `tests/` | Authoring, format and Lumen runtime tests. |
+| `tools/Probe` | Format probe used to measure the original archives (`docs/lumenstudio/format-findings.md`). |
+| `samples/song-select-poc` | A Song Select written from scratch with Lumen Author. |
+| `native/`, `eng/` | Native library sources and the fetch / shader build scripts. |
+
+## Documentation
+
+- [Lumen authoring](docs/lumen-authoring.md): project format, LumenScript, the `Wd` host API, CLI.
+- [Format findings](docs/lumenstudio/format-findings.md): invariants measured on the original archives.
+- Formats: [DDP archives](docs/development/ddp-archives.md), [LMB records](docs/development/lmb-records.md),
+  [NUT textures](docs/development/nut-textures.md), [parser safety](docs/development/parser-safety.md).
+- Runtime: [Lumen runtime](docs/development/lumen-runtime.md), [Lumen patches](docs/development/lumen-patches.md),
+  [rendering](docs/development/rendering.md), [native builds](docs/development/native-builds.md),
+  [FFmpeg](docs/development/ffmpeg.md).
+- Legal: [provenance](docs/legal/provenance.md), [evidence policy](docs/legal/evidence-policy.md),
+  [release content policy](docs/legal/release-content-policy.md), [notice](NOTICE.md),
+  [third-party notices](THIRD_PARTY_NOTICES.md), [license](LICENSE).

@@ -14,6 +14,7 @@ namespace LumenStudio.Authoring.Preview;
 public sealed class PreviewSongSelectHost : ILumenHostBinding
 {
     private static readonly string[] Genres = ["Pop", "Anime", "Namco Original"];
+    private static readonly int[] GenreColors = [0x42C0FF, 0xFF8A3C, 0xFF4C9A];
     public List<string> Log { get; } = [];
 
     public void Install(LumenHostContext context) => context.RegisterObject("Wd", api =>
@@ -24,7 +25,7 @@ public sealed class PreviewSongSelectHost : ILumenHostBinding
         api.RegisterMethod("player", _ => LumenHostValue.FromNumber(0));
         api.RegisterMethod("genreCount", _ => LumenHostValue.FromNumber(Genres.Length));
         api.RegisterMethod("genreName", call => LumenHostValue.FromString(Genres[Math.Clamp(n(call, 0), 0, 2)]));
-        api.RegisterMethod("genreColor", call => LumenHostValue.FromNumber(new[] { 0x42C0FF, 0xFF8A3C, 0xFF4C9A }[Math.Clamp(n(call, 0), 0, 2)]));
+        api.RegisterMethod("genreColor", call => LumenHostValue.FromNumber(GenreColors[Math.Clamp(n(call, 0), 0, 2)]));
         api.RegisterMethod("songCount", _ => LumenHostValue.FromNumber(9));
         api.RegisterMethod("songTitle", call => LumenHostValue.FromString($"{Genres[Math.Clamp(n(call, 0), 0, 2)]} song {n(call, 1) + 1}"));
         api.RegisterMethod("songSubtitle", call => LumenHostValue.FromString($"from the test catalog"));

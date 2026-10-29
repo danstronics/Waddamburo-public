@@ -63,7 +63,7 @@ out/build/native/linux-x64/linux-ffmpeg/ffmpeg/prefix/lib \
 The same entry point accepts MP3, Ogg/Vorbis, Opus, FLAC, WAV, and Green NUB files.
 It is diagnostic scaffolding for the streaming decoder, not the final BGM/preview/
 sound-effect mixer. SDL device ownership and queue semantics are documented in
-[`sdl-audio.md`](sdl-audio.md).
+[`sdl-audio.md`](https://github.com/LucaSilva-r/Waddamburo-public/blob/master/docs/development/sdl-audio.md).
 
 ## vgmstream backend and Nijiiro audio
 

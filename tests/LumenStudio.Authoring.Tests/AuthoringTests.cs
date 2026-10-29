@@ -24,7 +24,7 @@ public sealed class AuthoringTests
         var builder = new LmbBuilder();
         var root = builder.Sprite();
         setup?.Invoke(builder, root);
-        root.Frame(0).Add(new ActionCommand((uint)builder.Action(ScriptCompiler.Compile(script, builder.String))));
+        root.Frame(0).Add(new ActionCommand((uint)builder.Action(ScriptCompiler.Compile(script, builder.Intern))));
         root.Frame(frames - 1);
         builder.RootId = root.Id;
         return new LumenPlayer(parse(builder.Build(), builder.Textures.Count), 1280, 720, hostBinding: host);
@@ -33,7 +33,7 @@ public sealed class AuthoringTests
     private static double number(LumenPlayer player, string path) => Assert.IsType<double>(player.ReadScriptValue(path));
 
     [Fact]
-    public void Language_core_runs_on_waddamburos_interpreter()
+    public void LanguageCoreRunsOnWaddamburosInterpreter()
     {
         var player = run("""
             var a = 2 + 3 * 4;            // 14
@@ -78,13 +78,13 @@ public sealed class AuthoringTests
     }
 
     [Fact]
-    public void Timeline_labels_and_frame_scripts_drive_playback()
+    public void TimelineLabelsAndFrameScriptsDrivePlayback()
     {
         var builder = new LmbBuilder();
         var root = builder.Sprite();
         root.Labels.Add(("loop", 5));
-        root.Frame(0).Add(new ActionCommand((uint)builder.Action(ScriptCompiler.Compile("var hits = 0; gotoAndPlay(\"loop\");", builder.String))));
-        root.Frame(7).Add(new ActionCommand((uint)builder.Action(ScriptCompiler.Compile("hits++; stop();", builder.String))));
+        root.Frame(0).Add(new ActionCommand((uint)builder.Action(ScriptCompiler.Compile("var hits = 0; gotoAndPlay(\"loop\");", builder.Intern))));
+        root.Frame(7).Add(new ActionCommand((uint)builder.Action(ScriptCompiler.Compile("hits++; stop();", builder.Intern))));
         root.Frame(9);
         builder.RootId = root.Id;
         var player = new LumenPlayer(parse(builder.Build()), 1280, 720);
@@ -94,7 +94,7 @@ public sealed class AuthoringTests
     }
 
     [Fact]
-    public void Attached_exports_and_text_fields_are_scriptable()
+    public void AttachedExportsAndTextFieldsAreScriptable()
     {
         var player = run("""
             var row = this.attachMovie("Row", "row0", 10);
@@ -106,7 +106,7 @@ public sealed class AuthoringTests
             var text = builder.Text(0, 0, 300, 40, 24, "left", "#FFFFFF");
             var row = builder.Sprite();
             row.ExportName = "Row";
-            row.Frame(0).Add(new PlaceCommand(text.Id, 1, (uint)builder.String("label"), 1, 0, 1, 0, 0,
+            row.Frame(0).Add(new PlaceCommand(text.Id, 1, (uint)builder.Intern("label"), 1, 0, 1, 0, 0,
                 PlaceCommand.MatrixPosition, (ushort)builder.Matrix(Affine.Identity), PlaceCommand.NoColor, PlaceCommand.NoColor));
         });
         Assert.Equal("Hello", player.ReadScriptValue("got"));
@@ -128,7 +128,7 @@ public sealed class AuthoringTests
     }
 
     [Fact]
-    public void Host_calls_cross_both_ways()
+    public void HostCallsCrossBothWays()
     {
         var host = new EchoHost();
         var player = run("""
@@ -144,7 +144,7 @@ public sealed class AuthoringTests
     }
 
     [Fact]
-    public void Archives_and_textures_written_from_scratch_round_trip()
+    public void ArchivesAndTexturesWrittenFromScratchRoundTrip()
     {
         var pixels = new byte[16 * 8 * 4];
         for (var i = 0; i < pixels.Length; i += 4) (pixels[i], pixels[i + 3]) = (255, 255);
@@ -175,7 +175,7 @@ public sealed class AuthoringTests
     }
 
     [Fact]
-    public void Rewriting_with_identity_reproduces_every_original_action()
+    public void RewritingWithIdentityReproducesEveryOriginalAction()
     {
         if (originalSongSelect() is not { } path) return; // game data is not redistributable
         var view = DdpArchive.Open(File.ReadAllBytes(path)).OpenMovie("song_select/song_select.lm");
@@ -194,7 +194,7 @@ public sealed class AuthoringTests
     }
 
     [Fact]
-    public void Imported_original_sprites_play_in_a_movie_built_from_scratch()
+    public void ImportedOriginalSpritesPlayInAMovieBuiltFromScratch()
     {
         if (originalSongSelect() is not { } path) return;
         var view = DdpArchive.Open(File.ReadAllBytes(path)).OpenMovie("song_select/song_select.lm");
@@ -205,8 +205,8 @@ public sealed class AuthoringTests
         var background = importer.Import("BackGround");
         var board = importer.Import("MusicBoard");
         var root = builder.Sprite();
-        root.Frame(0).Add(new PlaceCommand(background, 1, (uint)builder.String("bg"), 1, 0, 1, 0, 0, PlaceCommand.MatrixPosition, (ushort)builder.Matrix(Affine.Identity), PlaceCommand.NoColor, PlaceCommand.NoColor));
-        root.Frame(0).Add(new PlaceCommand(board, 2, (uint)builder.String("board"), 1, 0, 2, 0, 0, PlaceCommand.MatrixPosition, (ushort)builder.Matrix(Affine.Identity with { X = 640, Y = 360 }), PlaceCommand.NoColor, PlaceCommand.NoColor));
+        root.Frame(0).Add(new PlaceCommand(background, 1, (uint)builder.Intern("bg"), 1, 0, 1, 0, 0, PlaceCommand.MatrixPosition, (ushort)builder.Matrix(Affine.Identity), PlaceCommand.NoColor, PlaceCommand.NoColor));
+        root.Frame(0).Add(new PlaceCommand(board, 2, (uint)builder.Intern("board"), 1, 0, 2, 0, 0, PlaceCommand.MatrixPosition, (ushort)builder.Matrix(Affine.Identity with { X = 640, Y = 360 }), PlaceCommand.NoColor, PlaceCommand.NoColor));
         builder.RootId = root.Id;
         var movie = parse(builder.Build(), builder.Textures.Count);
         Assert.True(importer.TextureMap.Count > 0 && importer.TextureMap.Count < sizes.Count);
@@ -218,7 +218,7 @@ public sealed class AuthoringTests
     }
 
     [Fact]
-    public void The_song_select_sample_builds_and_plays_with_the_preview_host()
+    public void TheSongSelectSampleBuildsAndPlaysWithThePreviewHost()
     {
         if (originalSongSelect() is not { } path) return;
         var game = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, "..", "..", "..", ".."));

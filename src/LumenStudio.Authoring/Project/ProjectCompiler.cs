@@ -34,7 +34,7 @@ public static class ProjectCompiler
         }
 
         var builder = new LmbBuilder { Width = project.Width, Height = project.Height, FrameRate = project.Fps };
-        builder.String(AuthoredMarker);
+        builder.Intern(AuthoredMarker);
         var textureData = new Dictionary<int, byte[]>();
         var sources = new Dictionary<string, (MovieImporter Importer, DdpMovieView View)>(StringComparer.Ordinal);
         foreach (var import in project.Imports)
@@ -167,7 +167,7 @@ public static class ProjectCompiler
             {
                 var source = code.StartsWith('@') ? File.ReadAllText(resolve(code[1..])) : code;
                 byte[] bytecode;
-                try { bytecode = ScriptCompiler.Compile(source, builder.String); }
+                try { bytecode = ScriptCompiler.Compile(source, builder.Intern); }
                 catch (ScriptException error)
                 {
                     throw new InvalidDataException($"{(code.StartsWith('@') ? code[1..] : $"{symbol.Id} frame {frame}")}:{error.Message}", error);
@@ -185,7 +185,7 @@ public static class ProjectCompiler
             var states = resolveKeys(keys);
             var start = layer.From ?? keys[0].Frame;
             var end = Math.Min(layer.To ?? frames - 1, frames - 1);
-            var name = layer.Name is { Length: > 0 } instance ? (uint)builder.String(instance) : 0;
+            var name = layer.Name is { Length: > 0 } instance ? (uint)builder.Intern(instance) : 0;
             var blend = (layer.Blend ?? "normal").ToLowerInvariant() switch
             {
                 "normal" => (ushort)0,

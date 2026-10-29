@@ -67,7 +67,7 @@ of catch-up ticks sees the snapshot captured after that presentation loop's even
 poll, and window focus loss clears held state. `LumenInputAdapter` maps letters,
 digits, arrows, Enter, Escape, Space, and Backspace to the standard key codes read
 by AVM `Key.isDown`; SDL types do not cross into the Lumen runtime. The drum pads
-(P1 `D/F/J/K` and P2 `Z/X/C/V`, or whatever is bound to them: see [input](input.md)) map
+(P1 `D/F/J/K` and P2 `Z/X/C/V`, or whatever is bound to them: see [input](https://github.com/LucaSilva-r/Waddamburo-public/blob/master/docs/development/input.md)) map
 onto each movie's authored left/right/decide polling, with either center hit acting as decide.
 
 Lumen frames carry their logical-stage aspect ratio into the renderer. Every

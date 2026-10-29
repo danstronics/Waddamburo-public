@@ -119,7 +119,7 @@ public sealed class LmbBuilder
 
     public uint NewCharacterId() => _nextId++;
 
-    public int String(string value)
+    public int Intern(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
         if (_stringIndex.TryGetValue(value, out var index)) return index;
@@ -180,9 +180,9 @@ public sealed class LmbBuilder
         string font = "P_taiko_font")
     {
         var html = $"<p align=\"{align}\"><font face=\"{font}\" size=\"{size.ToString(System.Globalization.CultureInfo.InvariantCulture)}\" color=\"{color}\" letterSpacing=\"0.000000\" kerning=\"1\"></font></p>";
-        FontWords ??= [1, 0, 0, (uint)String(font), 0, 0];
+        FontWords ??= [1, 0, 0, (uint)Intern(font), 0, 0];
         var words = new uint[16];
-        words[2] = (uint)String(html);
+        words[2] = (uint)Intern(html);
         words[5] = (uint)Bounds(left, top, left + width, top + height);
         words[8] = 0x1FFFF; words[9] = 0x10001; words[10] = 0x10001;
         words[11] = BitConverter.SingleToUInt32Bits(size);
@@ -203,8 +203,8 @@ public sealed class LmbBuilder
         // Every string the records reference must be in the pool, which is written first.
         foreach (var sprite in _sprites)
         {
-            if (sprite.ExportName is { Length: > 0 } name) String(name);
-            foreach (var (label, _) in sprite.Labels) String(label);
+            if (sprite.ExportName is { Length: > 0 } name) Intern(name);
+            foreach (var (label, _) in sprite.Labels) Intern(label);
         }
         using var output = new MemoryStream();
         var header = new byte[0x40];
@@ -293,11 +293,11 @@ public sealed class LmbBuilder
         foreach (var sprite in _sprites.OrderBy(s => s.Id == RootId ? 1 : 0).ThenBy(s => s.Id))
         {
             var depth = sprite.Frames.SelectMany(f => f).OfType<PlaceCommand>().Select(p => (int)p.Depth).DefaultIfEmpty(0).Max();
-            var exportIndex = sprite.ExportName is { Length: > 0 } export ? (uint)String(export) : 0;
+            var exportIndex = sprite.ExportName is { Length: > 0 } export ? (uint)Intern(export) : 0;
             words.AddRange([sprite.Id, 0, exportIndex, (uint)sprite.Labels.Count, (uint)Math.Max(1, sprite.Frames.Count),
                 (uint)sprite.KeyFrames.Count, pack(Math.Max(1, depth), 0)]);
             record(0x0027);
-            foreach (var (name, frame) in sprite.Labels) { words.AddRange([(uint)String(name), (uint)frame, 0]); record(0x002B); }
+            foreach (var (name, frame) in sprite.Labels) { words.AddRange([(uint)Intern(name), (uint)frame, 0]); record(0x002B); }
             void commands(List<TimelineCommand> list)
             {
                 foreach (var command in list)

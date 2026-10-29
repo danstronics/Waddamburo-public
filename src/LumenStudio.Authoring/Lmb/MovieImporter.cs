@@ -61,11 +61,11 @@ public sealed class MovieImporter
         throw new KeyNotFoundException($"Character {sourceId} is not defined in the source movie.");
     }
 
-    public int String(uint sourceIndex)
+    public int ImportString(uint sourceIndex)
     {
         if (sourceIndex == 0 || sourceIndex >= _source.Strings.Length) return 0;
         if (_strings.TryGetValue((int)sourceIndex, out var mapped)) return mapped;
-        mapped = _builder.String(_source.Strings[(int)sourceIndex].Value);
+        mapped = _builder.Intern(_source.Strings[(int)sourceIndex].Value);
         _strings.Add((int)sourceIndex, mapped);
         return mapped;
     }
@@ -100,7 +100,7 @@ public sealed class MovieImporter
     private uint importText(LmbTextDefinition text)
     {
         var words = text.Words.ToArray();
-        words[2] = (uint)String(words[2]);
+        words[2] = (uint)ImportString(words[2]);
         words[5] = (uint)bounds((int)words[5]);
         var target = _builder.Text(words);
         _characters.Add(text.CharacterId, target.Id);
@@ -134,7 +134,7 @@ public sealed class MovieImporter
                     break;
                 case LmbPlaceObjectCommand place when current is not null:
                     // A move (mode 2) may name no character (0); keep it.
-                    current.Add(new PlaceCommand(defined(place.CharacterId) ? Import(place.CharacterId) : place.CharacterId, place.PlacementId, (uint)String(place.NameStringIndex),
+                    current.Add(new PlaceCommand(defined(place.CharacterId) ? Import(place.CharacterId) : place.CharacterId, place.PlacementId, (uint)ImportString(place.NameStringIndex),
                         place.Mode, place.BlendMode, place.Depth, place.ClipDepth, place.FirstFrame, place.PositionKind,
                         position(place.PositionKind, place.PositionIndex), color(place.ColorMultiplyIndex), color(place.ColorAddIndex)));
                     break;
@@ -158,7 +158,7 @@ public sealed class MovieImporter
         if (sourceIndex >= _source.Actions.Length) return null;
         var code = _source.Actions[(int)sourceIndex].Code;
         if (StripScripts && !code.Instructions.All(i => i.Opcode is 0x07 or 0x00)) return null;
-        mapped = _builder.Action(Avm1Rewriter.RemapStrings(code, index => String((uint)index)));
+        mapped = _builder.Action(Avm1Rewriter.RemapStrings(code, index => ImportString((uint)index)));
         _actions.Add(sourceIndex, mapped);
         return mapped;
     }

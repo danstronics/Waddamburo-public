@@ -17,7 +17,7 @@ public static class ScriptCompiler
         ArgumentNullException.ThrowIfNull(intern);
         var parser = new Parser(Lexer.Tokenize(source));
         var program = parser.ParseProgram();
-        var generator = new Generator(intern, parser.Imports, inFunction: false);
+        using var generator = new Generator(intern, parser.Imports, inFunction: false);
         foreach (var statement in program) generator.Statement(statement);
         generator.Op(0x00);
         return generator.Finish();
@@ -25,12 +25,14 @@ public static class ScriptCompiler
 
     private sealed class Label { public int Position = -1; }
 
-    private sealed class Generator(Func<string, int> intern, Dictionary<string, string[]> imports, bool inFunction)
+    private sealed class Generator(Func<string, int> intern, Dictionary<string, string[]> imports, bool inFunction) : IDisposable
     {
         private readonly MemoryStream _code = new();
         private readonly List<(int Operand, Label Target)> _fixups = [];
         private readonly Stack<(Label Break, Label? Continue)> _loops = new();
         private static int s_switchCounter;
+
+        public void Dispose() => _code.Dispose();
 
         public byte[] Finish()
         {
@@ -545,7 +547,7 @@ public static class ScriptCompiler
 
         private void defineFunction(FunctionExpr function)
         {
-            var body = new Generator(intern, imports, inFunction: true);
+            using var body = new Generator(intern, imports, inFunction: true);
             foreach (var statement in function.Body) body.Statement(statement);
             body.Op(0x00); // Lumen ends function bodies with End too (Waddamburo requires it)
             var code = body.Finish();
