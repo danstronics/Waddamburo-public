@@ -26,6 +26,13 @@ public static class Avm1Assembly
     };
     private static readonly Dictionary<string, byte> Opcodes = Names.ToDictionary(p => p.Value, p => p.Key, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Decodes bytecode that is not (yet) part of a movie, e.g. freshly compiled LumenScript.</summary>
+    public static Avm1CodeBlock Decode(byte[] bytecode)
+    {
+        ArgumentNullException.ThrowIfNull(bytecode);
+        return Avm1BytecodeReader.Read([.. bytecode], 0, ParserLimits.Default);
+    }
+
     /// <summary>String-pool indices an action's operands use, including nested function bodies.</summary>
     public static IEnumerable<int> StringReferences(Avm1CodeBlock code)
     {

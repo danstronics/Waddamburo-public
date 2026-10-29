@@ -16,6 +16,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="LumenStudio.Tests" />
     <ProjectReference Include="../LumenStudio.Core/LumenStudio.Core.csproj" />
+    <ProjectReference Include="../LumenStudio.Authoring/LumenStudio.Authoring.csproj" />
     <ProjectReference Include="../Waddamburo.Formats/Waddamburo.Formats.csproj" />
     <ProjectReference Include="../Waddamburo.Lumen/Waddamburo.Lumen.csproj" />
     <ProjectReference Include="../Waddamburo.Platform.Sdl/Waddamburo.Platform.Sdl.csproj" />

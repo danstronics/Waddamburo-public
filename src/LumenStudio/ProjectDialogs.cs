@@ -10,6 +10,8 @@ internal sealed class AppSettings
 {
     public List<string> RecentProjects { get; set; } = [];
     public string? WaddamburoExecutable { get; set; }
+    /// <summary>Lumen Author: the game's USRDIR whose art projects borrow (read only).</summary>
+    public string? AuthoringGameRoot { get; set; }
     public bool PreviewScripts { get; set; }
     public bool ShowPlaceholders { get; set; } = true;
     public bool MoveWholeTrack { get; set; } = true;

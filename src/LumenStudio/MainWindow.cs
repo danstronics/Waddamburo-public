@@ -262,6 +262,7 @@ internal sealed class MainWindow : Form
         };
         recent.DropDownItems.Add("(none)");
         file.DropDownItems.Add(recent);
+        item(file, "Lumen Author (new movies from scratch)…", Keys.Control | Keys.Shift | Keys.N, () => new AuthoringWindow(_settings).Show(this));
         item(file, "Project settings…", Keys.None, projectSettings);
         separator(file);
         item(file, "Save all", Keys.Control | Keys.S, () => saveAll());
@@ -541,6 +542,9 @@ internal sealed class MainWindow : Form
         _studio = StudioSession.Open(project);
         _studio.Changed += onStudioChanged;
         _settings.AddRecent(project.Path);
+        foreach (var candidate in new[] { project.FontPath, project.GameRoot is { } root ? Path.Combine(root, "data", "font", "font.ttf") : null,
+            PackedFolder.GameRootOf(project.BasePacked) is { } baseRoot ? Path.Combine(baseRoot, "data", "font", "font.ttf") : null })
+            if (GameFonts.Load(candidate) is { } fontName) { log($"Game font for texture text: {fontName}"); break; }
         var explorerClock = Stopwatch.StartNew();
         _explorer.SetSession(_studio);
         log($"Archive list ready in {explorerClock.Elapsed.TotalSeconds:0.0}s.");

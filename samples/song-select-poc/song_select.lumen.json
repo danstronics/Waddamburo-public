@@ -1,0 +1,96 @@
+{
+  // Song Select proof of concept: a movie written from scratch (this file + main.as) that reuses
+  // Green's own art and animations, read from the installed game when it is built. No Namco file
+  // is stored here; ${game} is the USRDIR given to lumenstudio-cli --game (or Lumen Author's game folder).
+  "archive": "song_select/packeddata.ddp",
+  "movie": "song_select/song_select.lm",
+  "width": 1280,
+  "height": 720,
+  "fps": 60,
+  "imports": [
+    {
+      "id": "ss",
+      "archive": "${game}/data/lumendata/packed/song_select/packeddata.ddp",
+      "movie": "song_select/song_select.lm"
+    }
+  ],
+  "symbols": [
+    // Song rows: three plates the script shows one at a time, a title and a level.
+    { "id": "PlateIdle", "kind": "rect", "width": 560, "height": 54, "color": "#F2EAD3" },
+    { "id": "PlateHeader", "kind": "rect", "width": 560, "height": 54, "color": "#24345F" },
+    { "id": "PlateGlow", "kind": "rect", "width": 576, "height": 66, "color": "#FFFFFF", "originX": 0.0139, "originY": 0.0909 },
+    { "id": "PlateFocus", "kind": "rect", "width": 560, "height": 54, "color": "#FF7A2E" },
+    {
+      // The focused plate breathes: a timeline tween authored here, looping by itself.
+      "id": "FocusPlate", "kind": "sprite", "frames": 60,
+      "layers": [
+        { "symbol": "PlateGlow", "keys": [ { "frame": 0, "alpha": 0.9, "tween": "easeInOut" }, { "frame": 30, "alpha": 0.35, "tween": "easeInOut" }, { "frame": 59, "alpha": 0.9 } ] },
+        { "symbol": "PlateFocus" }
+      ]
+    },
+    { "id": "RowTitle", "kind": "text", "width": 420, "height": 40, "size": 26, "color": "#3A2A1A" },
+    { "id": "RowLevel", "kind": "text", "width": 110, "height": 40, "size": 24, "align": "right", "color": "#B4321E" },
+    {
+      // Attached by the script (attachMovie("SongRow", ...)), one per visible row.
+      "id": "SongRow", "kind": "sprite", "export": "SongRow",
+      "layers": [
+        { "name": "idle", "symbol": "PlateIdle" },
+        { "name": "header", "symbol": "PlateHeader" },
+        { "name": "focus", "symbol": "FocusPlate" },
+        { "name": "title", "symbol": "RowTitle", "keys": [ { "frame": 0, "x": 18, "y": 9 } ] },
+        { "name": "level", "symbol": "RowLevel", "keys": [ { "frame": 0, "x": 432, "y": 9 } ] }
+      ]
+    },
+
+    // The list the rows are attached to; the root timeline slides it in.
+    { "id": "List", "kind": "sprite" },
+    { "id": "Shade", "kind": "rect", "width": 600, "height": 570, "color": "#000000" },
+
+    // Header texts, course levels and the Back button of the difficulty step.
+    { "id": "GenreText", "kind": "text", "width": 380, "height": 40, "size": 30, "color": "#FFF2A8" },
+    { "id": "InfoText", "kind": "text", "width": 380, "height": 32, "size": 20, "color": "#FFFFFF" },
+    { "id": "LevelText", "kind": "text", "width": 90, "height": 34, "size": 24, "align": "center", "color": "#FFFFFF", "originX": 0.5 },
+    { "id": "BackPlate", "kind": "rect", "width": 84, "height": 300, "color": "#24345F", "originX": 0.5 },
+    { "id": "BackText", "kind": "text", "width": 84, "height": 34, "size": 22, "align": "center", "color": "#FFFFFF", "originX": 0.5 },
+    {
+      "id": "BackButton", "kind": "sprite",
+      "layers": [
+        { "symbol": "BackPlate" },
+        { "name": "label", "symbol": "BackText", "keys": [ { "frame": 0, "y": 133 } ] }
+      ]
+    },
+
+    {
+      // The root: Green's background, titles, course boards and 1P cursor, placed where Green's own
+      // Main puts them; our list, header and buttons around them. Frames 0-29 are the intro.
+      "id": "Main", "kind": "sprite", "frames": 30,
+      "labels": { "intro": 0, "ready": 29 },
+      "layers": [
+        { "name": "bg", "symbol": "ss:BackGround", "keys": [ { "frame": 0, "x": 960, "y": 360 } ] },
+        { "name": "shade", "symbol": "Shade", "keys": [
+          { "frame": 0, "x": 50, "y": 90, "alpha": 0, "tween": "easeOut" }, { "frame": 20, "alpha": 0.45 } ] },
+        { "name": "list", "symbol": "List", "keys": [
+          { "frame": 0, "x": -640, "y": 0, "tween": "easeOut" }, { "frame": 22, "x": 0 } ] },
+        { "name": "genreText", "symbol": "GenreText", "keys": [ { "frame": 0, "x": 370, "y": 12, "alpha": 0 }, { "frame": 25, "alpha": 1 } ] },
+        { "name": "infoText", "symbol": "InfoText", "keys": [ { "frame": 0, "x": 370, "y": 52, "alpha": 0 }, { "frame": 25, "alpha": 1 } ] },
+        { "name": "board0", "symbol": "ss:CourseBoard[Easy]", "keys": [ { "frame": 0, "x": 800, "y": 60 } ] },
+        { "name": "board1", "symbol": "ss:CourseBoard[Normal]", "keys": [ { "frame": 0, "x": 900, "y": 60 } ] },
+        { "name": "board2", "symbol": "ss:CourseBoard[Hard]", "keys": [ { "frame": 0, "x": 1000, "y": 60 } ] },
+        { "name": "board3", "symbol": "ss:CourseBoard[Mania]", "keys": [ { "frame": 0, "x": 1100, "y": 60 } ] },
+        { "name": "back", "symbol": "BackButton", "keys": [ { "frame": 0, "x": 690, "y": 150 } ] },
+        { "name": "lv0", "symbol": "LevelText", "keys": [ { "frame": 0, "x": 851, "y": 452 } ] },
+        { "name": "lv1", "symbol": "LevelText", "keys": [ { "frame": 0, "x": 951, "y": 452 } ] },
+        { "name": "lv2", "symbol": "LevelText", "keys": [ { "frame": 0, "x": 1051, "y": 452 } ] },
+        { "name": "lv3", "symbol": "LevelText", "keys": [ { "frame": 0, "x": 1151, "y": 452 } ] },
+        { "name": "cursor", "symbol": "ss:CourseCursor[1p]", "keys": [ { "frame": 0, "x": 800, "y": 7 } ] },
+        { "name": "titleMusic", "symbol": "ss:ModeTitle[Music]", "keys": [ { "frame": 0, "x": -20, "y": 16 } ] },
+        { "name": "titleCourse", "symbol": "ss:ModeTitle[Cource]", "keys": [ { "frame": 0, "x": -20, "y": 16 } ] }
+      ],
+      "scripts": {
+        "0": "@main.as",
+        "29": "stop();"
+      }
+    }
+  ],
+  "root": "Main"
+}

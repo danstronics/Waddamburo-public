@@ -58,6 +58,7 @@ internal sealed class StageView : Control
 
     public void SetFrame(LumenRenderSnapshot snapshot, IReadOnlyList<LumenSoftwareTexture> textures)
     {
+        (snapshot, textures) = TextSurfaces.Inline(snapshot, textures);
         _snapshot = snapshot;
         _textures = textures;
         if (_gpu is null)
@@ -142,9 +143,12 @@ internal sealed class StageView : Control
         if (_gpu is null) return;
         if (_textureIds.Length != _textures.Count)
         {
-            foreach (var id in _textureIds) _gpu.Release(id);
-            _textureIds = new RenderTextureId[_textures.Count];
-            _uploaded = new LumenSoftwareTexture[_textures.Count];
+            // The count changes with the dynamic text fields drawn (appended last): keep the movie's own
+            // uploads and release only what no longer has an index.
+            for (var i = _textures.Count; i < _textureIds.Length; i++)
+                if (_uploaded[i] is not null) _gpu.Release(_textureIds[i]);
+            Array.Resize(ref _textureIds, _textures.Count);
+            Array.Resize(ref _uploaded, _textures.Count);
         }
         for (var i = 0; i < _textures.Count; i++)
         {

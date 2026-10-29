@@ -68,3 +68,13 @@ replacing a working installation.
 
 `lumenstudio-cli` offers `new`, `scan`, `sync [--apply]`, `replace`, `export`, `link` and `validate`
 for batch work (run it without arguments for help).
+
+## New movies from scratch (Lumen Author)
+
+*File › Lumen Author* (or `LumenStudio.exe movie.lumen.json`) creates movies of our own: symbols and
+timelines in a JSON project, logic in **LumenScript** (an ActionScript 2 subset), art either our own PNGs
+or sprites borrowed from the installed game at build time (nothing of Namco's is stored in the project).
+F5 compiles and plays the movie in the editor; F6 runs it in Waddamburo, which gives authored movies the
+documented `Wd` host API. `samples/song-select-poc` is a working Song Select written this way. Reference:
+`docs/lumen-authoring.md`; command line: `lumenstudio-cli lumen-build | lumen-preview | lumen-inspect |
+lumen-render | lumen-script`.

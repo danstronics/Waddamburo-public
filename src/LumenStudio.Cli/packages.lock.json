@@ -8,6 +8,14 @@
         "resolved": "10.0.5",
         "contentHash": "A+5ZuQ0f449tM+MQrhf6R9ZX7lYpjk/ODEwLYKrnF6111rtARx8fVsm4YznUnQiKnnXfaXNBqgxmil6RW3L3SA=="
       },
+      "lumenstudio.authoring": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Formats": "[0.0.0-dev, )",
+          "Waddamburo.Lumen": "[0.0.0-dev, )",
+          "Waddamburo.Upscale": "[0.0.0-dev, )"
+        }
+      },
       "lumenstudio.core": {
         "type": "Project",
         "dependencies": {
@@ -17,6 +25,12 @@
       },
       "waddamburo.formats": {
         "type": "Project"
+      },
+      "waddamburo.lumen": {
+        "type": "Project",
+        "dependencies": {
+          "Waddamburo.Formats": "[0.0.0-dev, )"
+        }
       },
       "waddamburo.upscale": {
         "type": "Project"

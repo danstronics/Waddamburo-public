@@ -25,6 +25,20 @@ internal static partial class WaddamburoLauncher
         return null;
     }
 
+    /// <summary>
+    /// A Waddamburo that knows authored movies (the Wd host API): the copy built with LumenStudio, then the
+    /// configured one.
+    /// </summary>
+    public static string? FindAuthoringExecutable(AppSettings settings)
+    {
+        foreach (var name in new[] { Path.Combine("waddamburo", "Waddamburo.App.exe"), Path.Combine("waddamburo", "Waddamburo.exe") })
+        {
+            var bundled = Path.Combine(AppContext.BaseDirectory, name);
+            if (File.Exists(bundled)) return bundled;
+        }
+        return settings.WaddamburoExecutable is { } configured && File.Exists(configured) ? configured : null;
+    }
+
     /// <summary>Opens one movie of a (possibly unsaved) archive in Waddamburo's viewer.</summary>
     public static void TestMovie(string executable, byte[] archive, string movie, bool layoutOnly)
     {

@@ -53,6 +53,7 @@ internal sealed class TextStyle
 
     private static string defaultFont()
     {
+        if (GameFonts.Default is { } game) return game;
         using var fonts = new InstalledFontCollection();
         foreach (var name in new[] { "Arial Rounded MT Bold", "Segoe UI Black", "Arial Black", "Segoe UI" })
             if (fonts.Families.Any(f => f.Name == name)) return name;
@@ -62,7 +63,7 @@ internal sealed class TextStyle
     /// <summary>Renders the text to a tightly cropped bitmap (with outline and shadow margins).</summary>
     public Bitmap Render()
     {
-        using var family = new FontFamily(Font);
+        using var family = GameFonts.Resolve(Font);
         var style = (Bold && family.IsStyleAvailable(FontStyle.Bold) ? FontStyle.Bold : FontStyle.Regular)
             | (Italic && family.IsStyleAvailable(FontStyle.Italic) ? FontStyle.Italic : FontStyle.Regular);
         if (!family.IsStyleAvailable(style)) style = FontStyle.Regular;
@@ -167,7 +168,39 @@ internal sealed class TextStyle
         public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext? context)
         {
             using var fonts = new InstalledFontCollection();
-            return new StandardValuesCollection(fonts.Families.Select(f => f.Name).ToArray());
+            return new StandardValuesCollection(GameFonts.Names.Concat(fonts.Families.Select(f => f.Name)).Distinct().ToArray());
         }
     }
+}
+
+/// <summary>
+/// Fonts loaded from files without installing them: the game's own title font (USRDIR/data/font/font.ttf),
+/// offered first and used by default so translated labels match the original lettering.
+/// </summary>
+internal static class GameFonts
+{
+    private static readonly PrivateFontCollection s_fonts = new();
+    private static readonly HashSet<string> s_loaded = new(StringComparer.OrdinalIgnoreCase);
+
+    public static string? Default { get; private set; }
+
+    public static IEnumerable<string> Names => s_fonts.Families.Select(f => f.Name);
+
+    /// <summary>Loads a TTF/OTF; returns its family name, or null when the file is missing or invalid.</summary>
+    public static string? Load(string? path)
+    {
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
+        var full = Path.GetFullPath(path);
+        if (s_loaded.Add(full))
+        {
+            try { s_fonts.AddFontFile(full); }
+            catch (Exception exception) when (exception is ArgumentException or FileNotFoundException or System.Runtime.InteropServices.ExternalException) { return null; }
+        }
+        var name = s_fonts.Families.LastOrDefault()?.Name;
+        Default ??= name;
+        return name;
+    }
+
+    public static FontFamily Resolve(string name) =>
+        s_fonts.Families.Any(f => f.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) ? new FontFamily(name, s_fonts) : new FontFamily(name);
 }
